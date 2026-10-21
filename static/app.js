@@ -362,11 +362,24 @@ async function provaDeTrabalho() {
 }
 
 // ---------- compartilhar ----------
+// Convite com os dois jeitos de "jogar": criar e ganhar sats, ou atacar o site e roubar o pote.
+function convite(site) {
+  if (!INFO.recompensas) return `Criei esta arte com a Rede de Nós. Crie a sua: ${site}`;
+  const pote = INFO.pote == null ? "" : ` de ${num(INFO.pote)} sats`;
+  return [
+    "Criei esta arte e ganhei sats ⚡",
+    "",
+    `🎨 Crie a sua e ganhe até ${INFO.limite_dia} sats por dia`,
+    `🏴‍☠️ Ou tente invadir e roubar o pote${pote}: quem achar uma falha leva um prêmio e deixa o ecossistema Bitcoin mais forte`,
+    ...(INFO.repo_url ? [`Código aberto: ${INFO.repo_url}`] : []),
+    "",
+    site,
+  ].join("\n");  // cabe nos 280 caracteres do X (links contam como 23)
+}
+
 $("compartilhar").addEventListener("click", async () => {
   const site = INFO.public_url || location.origin;
-  const texto = INFO.recompensas
-    ? `Criei esta arte e ganhei sats ⚡ Crie a sua e ganhe também: ${site}`
-    : `Criei esta arte com a Rede de Nós. Crie a sua: ${site}`;
+  const texto = convite(site);
   if (ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })) {
     try { await navigator.share({ files: [ultimoArquivo], text: texto, title: "Rede de Nós" }); return; }
     catch (e) { if (e.name === "AbortError") return; }
@@ -376,7 +389,7 @@ $("compartilhar").addEventListener("click", async () => {
   $("linksShare").innerHTML = "";
   for (const [nome, href] of [
     ["X", `https://x.com/intent/post?text=${t}`],
-    ["Telegram", `https://t.me/share/url?url=${u}&text=${t}`],
+    ["Telegram", `https://t.me/share/url?url=${u}&text=${encodeURIComponent(texto.replace(site, "").trim())}`],
     ["WhatsApp", `https://wa.me/?text=${t}`],
   ]) {
     const a = document.createElement("a");
@@ -401,6 +414,7 @@ function configurarLinks() {
 }
 $("abrirBounty").addEventListener("click", () => abrir("modalBounty"));
 $("abrirBounty2").addEventListener("click", () => abrir("modalBounty"));
+$("abrirBounty3").addEventListener("click", () => abrir("modalBounty"));
 
 // ---------- modais ----------
 function abrir(id) { $(id).hidden = false; }
