@@ -69,6 +69,17 @@ Os pagamentos passam por uma conta [Coinos](https://coinos.io) dedicada.
 
    O IP de onde o cloudflared se conecta ao app precisa estar em `TRUSTED_PROXIES` (o padrão cobre `127.0.0.0/8` e as redes Docker `172.16.0.0/12`). Se ele estiver em outra rede (ex.: `192.168.x.x`), acrescente a faixa no `.env` e rode `docker compose up -d`.
 
+   **Cloudflared em outra máquina da rede:** o `docker-compose.yml` só publica a porta em `127.0.0.1`. Para a outra máquina alcançar o app, não edite esse arquivo (o `git pull` passaria a conflitar): crie um `docker-compose.override.yml` ao lado dele, que o Docker Compose lê sozinho, publicando a porta só no IP do servidor na rede local:
+   ```yaml
+   services:
+     sats-art:
+       ports:
+         - "192.168.1.10:8000:8000"   # IP deste servidor na rede local
+   ```
+   Evite `"8000:8000"`, que abre a porta em todas as interfaces (Tailscale, IPv6...) e passa por cima do `ufw`. No `.env`, confie só na máquina do cloudflared, por exemplo `TRUSTED_PROXIES=127.0.0.0/8,::1/128,192.168.1.20/32`. O IP dela aparece no evento `proxy_fora_da_lista` do log, se estiver faltando.
+
+   **Cache do Cloudflare:** a opção *Caching → Configuration → Browser Cache TTL* troca o `Cache-Control` do app por horas de cache no navegador. O site já se protege disso (a página pede `/app.js?v=<versão>`, então cada atualização busca o arquivo novo), mas o ideal é deixar essa opção em **Respect Existing Headers**. Se alguém vir o site parado em "Carregando…" logo depois de uma atualização antiga, recarregar com ⌘/Ctrl + Shift + R resolve.
+
    **Como conferir:** se o proxy estiver mal configurado, o log mostra a cada 10 minutos um evento de erro `proxy_sem_segredo` (falta o cabeçalho) ou `proxy_fora_da_lista` (falta a rede em `TRUSTED_PROXIES`); `segredo_proxy_invalido` indica segredo errado. Depois de configurar, os pedidos devem aparecer com hashes de IP diferentes:
    ```bash
    docker compose logs --since 10m | grep '"evento": "pedido"' | grep -o '"ip": "[^"]*"' | sort | uniq -c | sort -rn | head

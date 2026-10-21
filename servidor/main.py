@@ -4,6 +4,7 @@ Rodar: uvicorn servidor.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers
 (um único processo: os limitadores de taxa ficam em memória)
 """
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -16,7 +17,7 @@ from urllib.parse import urlsplit
 import qrcode
 import qrcode.image.svg
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from . import antiabuso, eventos
 from .eventos import evento
@@ -328,9 +329,21 @@ async def gerar_ou_recusar(p, largura, fmt, ip):
 
 
 # ---------- páginas ----------
+def pagina_com_versao():
+    """index.html pedindo o app.js com a versão no endereço (/app.js?v=<hash>).
+
+    Proxies como o Cloudflare podem trocar o Cache-Control do app.js por horas de cache
+    no navegador; sem a versão, quem voltasse ao site depois de uma atualização ficaria
+    com o JavaScript antigo e a página nova, e o site travaria em "Carregando…"."""
+    with open(os.path.join(STATIC, "app.js"), "rb") as f:
+        versao = hashlib.sha256(f.read()).hexdigest()[:12]
+    with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
+        return f.read().replace('src="/app.js"', f'src="/app.js?v={versao}"')
+
+
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-store"})
+    return HTMLResponse(pagina_com_versao(), headers={"Cache-Control": "no-store"})
 
 
 @app.get("/app.js")

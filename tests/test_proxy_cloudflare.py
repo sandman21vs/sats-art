@@ -66,3 +66,23 @@ def test_visitante_direto_sem_proxy_nao_gera_aviso(monkeypatch, tmp_path, caplog
     with caplog.at_level(logging.INFO):
         _pedir(main, "203.0.113.9", {"x-forwarded-for": "1.2.3.4"})  # cliente direto tentando forjar
     assert "proxy_sem_segredo" not in _eventos(caplog)
+
+
+def test_pagina_pede_o_app_js_com_a_versao(monkeypatch, tmp_path):
+    """O Cloudflare guarda o app.js por horas no navegador: a página precisa pedir pela versão."""
+    import hashlib
+    import pathlib
+
+    main = _main(monkeypatch, tmp_path)
+    raiz = pathlib.Path(__file__).resolve().parent.parent
+    versao = hashlib.sha256((raiz / "static" / "app.js").read_bytes()).hexdigest()[:12]
+
+    async def rodar():
+        t = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=t, base_url="http://site") as c:
+            return await c.get("/"), await c.get(f"/app.js?v={versao}")
+    pagina, js = asyncio.run(rodar())
+    assert f'src="/app.js?v={versao}"' in pagina.text and 'src="/app.js"' not in pagina.text
+    assert pagina.headers["cache-control"] == "no-store"
+    assert "content-security-policy" in pagina.headers
+    assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
