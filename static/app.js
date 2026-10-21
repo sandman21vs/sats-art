@@ -88,7 +88,7 @@ function sincronizar() {
 function salvar() { const { imagem_id, ...resto } = estado; guardar("rede-nos", resto); }
 
 // ---------- prévia ----------
-let timer, ocupado = false, pendente = false, primeiraPrevia = true;
+let timer, ocupado = false, pendente = false, primeiraPrevia = true, ultimaPrevia = null;
 function mudou() {
   salvar(); clearTimeout(timer); timer = setTimeout(renderizar, 220);
   if (!primeiraPrevia) $("dica").hidden = true;
@@ -103,7 +103,8 @@ async function renderizar() {
   try {
     const r = await postJSON("/api/preview", estado);
     if (!r.ok) throw new Error((await r.json()).erro || r.statusText);
-    const url = URL.createObjectURL(await r.blob());
+    ultimaPrevia = await r.blob();
+    const url = URL.createObjectURL(ultimaPrevia);
     const img = $("preview"), velho = img.src;
     img.src = url; img.hidden = false;
     if (velho.startsWith("blob:")) URL.revokeObjectURL(velho);
@@ -388,42 +389,90 @@ function convite(site) {
     ultimoArquivo ? "Criei esta arte e ganhei sats ⚡" : "Um site que paga sats para quem cria arte ⚡",
     "",
     `🎨 Crie a sua e ganhe até ${INFO.limite_dia} sats por dia`,
-    `🏴‍☠️ Ou tente invadir e roubar o pote${pote}: quem achar uma falha leva um prêmio e deixa o ecossistema Bitcoin mais forte`,
-    ...(INFO.repo_url ? [`Código aberto: ${INFO.repo_url}`] : []),
+    `🏴‍☠️ Ou tente invadir e roubar o pote${pote}: o código é open source, quem achar uma falha leva um prêmio e deixa o ecossistema Bitcoin mais forte`,
     "",
     site,
-  ].join("\n");  // cabe nos 280 caracteres do X (links contam como 23)
+  ].join("\n");  // cabe nos 280 caracteres do X (o link conta como 23)
 }
 
-// Popup com o convite: copiar, X, Telegram, WhatsApp e (no celular) o compartilhamento do
-// sistema, que leva a arte junto. Funciona antes de gerar qualquer arte (só o convite).
-function abrirCompartilhar() {
-  const site = INFO.public_url || location.origin;
+// Popup com o convite e a arte. Os links de X, Telegram e WhatsApp só levam texto (nenhum site
+// consegue anexar imagem por eles), então:
+// - no celular, "Compartilhar com a arte" usa o compartilhamento do sistema, que leva a imagem;
+// - no computador, clicar numa rede copia a arte para a área de transferência: é só colar no post.
+// A arte é a exportada ou, antes de exportar, a prévia que está na tela.
+const siteAtual = () => location.origin;  // o endereço que a pessoa está vendo (PUBLIC_URL pode estar errado)
+let arteConvite = null;  // { jpg: File, png: Blob, url }
+
+async function prepararArte() {
+  const fonte = ultimoArquivo || ultimaPrevia;
+  if (!fonte) return null;
+  const bmp = await createImageBitmap(fonte);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));  // leve: cabe no limite das redes
+  const c = Object.assign(document.createElement("canvas"),
+    { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = (tipo, q) => new Promise((ok) => c.toBlob(ok, tipo, q));
+  const [png, jpg] = await Promise.all([blob("image/png"), blob("image/jpeg", 0.92)]);
+  const arquivo = new File([jpg], "rede-de-nos.jpg", { type: "image/jpeg" });
+  return { png, jpg: arquivo, url: URL.createObjectURL(arquivo) };
+}
+
+function copiarArte() {
+  // começa a escrita na hora do clique (a página ainda tem foco), antes de abrir a rede
+  if (!arteConvite || !window.ClipboardItem || !navigator.clipboard?.write) return Promise.reject();
+  return navigator.clipboard.write([new ClipboardItem({ "image/png": arteConvite.png })]);
+}
+
+async function abrirCompartilhar() {
+  const site = siteAtual();
   const texto = convite(site);
   $("textoConvite").value = texto;
   const t = encodeURIComponent(texto);
   $("shareX").href = `https://x.com/intent/post?text=${t}`;
   $("shareTelegram").href = `https://t.me/share/url?url=${encodeURIComponent(site)}&text=${encodeURIComponent(texto.replace(site, "").trim())}`;
   $("shareWhatsapp").href = `https://wa.me/?text=${t}`;
-  $("maisOpcoes").hidden = !navigator.share;
-  $("maisOpcoes").textContent = ultimoArquivo ? "📱 Mais opções (com a sua arte)" : "📱 Mais opções";
-  $("dicaArte").hidden = !ultimoArquivo;
   $("copiarConvite").textContent = "📋 Copiar convite";
+  $("copiarArte").textContent = "🖼️ Copiar a arte";
+  $("avisoArte").hidden = true;
+  $("arteNoConvite").hidden = true; $("compartilharArte").hidden = true; $("copiarArte").hidden = true;
   abrir("modalCompartilhar");
+  try {
+    if (arteConvite) URL.revokeObjectURL(arteConvite.url);
+    arteConvite = await prepararArte();
+  } catch (e) { arteConvite = null; }
+  if (!arteConvite) return;
+  $("arteNoConvite").src = arteConvite.url; $("arteNoConvite").hidden = false;
+  $("compartilharArte").hidden = !navigator.canShare?.({ files: [arteConvite.jpg] });
+  $("copiarArte").hidden = !window.ClipboardItem;
 }
 $("compartilhar").addEventListener("click", abrirCompartilhar);
 $("compartilharTopo").addEventListener("click", abrirCompartilhar);
 $("copiarConvite").addEventListener("click", async () => {
   const b = $("copiarConvite");
-  try { await navigator.clipboard.writeText($("textoConvite").value); b.textContent = "✅ Copiado! Agora é só colar"; }
+  try { await navigator.clipboard.writeText($("textoConvite").value); b.textContent = "✅ Convite copiado"; }
   catch (e) { $("textoConvite").select(); b.textContent = "Selecione o texto e copie"; }
 });
-$("maisOpcoes").addEventListener("click", async () => {
-  const texto = $("textoConvite").value;
-  const dados = ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })
-    ? { files: [ultimoArquivo], text: texto, title: "Rede de Nós" } : { text: texto, title: "Rede de Nós" };
-  try { await navigator.share(dados); fechar("modalCompartilhar"); } catch (e) {}
+$("copiarArte").addEventListener("click", () => {
+  copiarArte().then(() => { $("copiarArte").textContent = "✅ Arte copiada: cole no post"; },
+    () => { $("copiarArte").textContent = "Não deu para copiar a arte"; });
 });
+$("compartilharArte").addEventListener("click", async () => {
+  try {
+    await navigator.share({ files: [arteConvite.jpg], text: $("textoConvite").value, title: "Rede de Nós" });
+    fechar("modalCompartilhar");
+  } catch (e) {}
+});
+document.querySelectorAll("#modalCompartilhar .rede").forEach((a) => a.addEventListener("click", () => {
+  // o link abre normalmente; antes, a arte vai para a área de transferência
+  copiarArte().then(() => {
+    $("avisoArte").textContent = "🖼️ A arte foi copiada. No post, cole com ⌘V (Mac) ou Ctrl+V antes de publicar.";
+    $("avisoArte").hidden = false;
+  }, () => {
+    if (!arteConvite) return;
+    $("avisoArte").textContent = "Anexe a arte que você baixou ao post.";
+    $("avisoArte").hidden = false;
+  });
+}));
 
 // ---------- GitHub e bug bounty ----------
 function configurarLinks() {
