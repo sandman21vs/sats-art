@@ -175,6 +175,8 @@ async function carregarInfo() {
   $("blocoEndereco").hidden = !INFO.recompensas;
   $("blocoApoie").hidden = INFO.recompensas || !INFO.doacao_endereco;
   $("tutGanhe").hidden = !INFO.recompensas;
+  $("abrirBounty3").hidden = !INFO.recompensas;  // sem recompensas não há pote para roubar
+  $("desafio").classList.toggle("sozinho", !INFO.recompensas);
   $("tutTitulo").textContent = INFO.recompensas ? "Crie arte e ganhe sats ⚡" : "Crie sua arte ✨";
   if (INFO.recompensas) {
     const seq = INFO.recompensas_seq;
@@ -364,10 +366,13 @@ async function provaDeTrabalho() {
 // ---------- compartilhar ----------
 // Convite com os dois jeitos de "jogar": criar e ganhar sats, ou atacar o site e roubar o pote.
 function convite(site) {
-  if (!INFO.recompensas) return `Criei esta arte com a Rede de Nós. Crie a sua: ${site}`;
+  if (!INFO.recompensas) {
+    return ultimoArquivo ? `Criei esta arte com a Rede de Nós. Crie a sua: ${site}`
+      : `Transforme qualquer símbolo numa rede de nós de luz: ${site}`;
+  }
   const pote = INFO.pote == null ? "" : ` de ${num(INFO.pote)} sats`;
   return [
-    "Criei esta arte e ganhei sats ⚡",
+    ultimoArquivo ? "Criei esta arte e ganhei sats ⚡" : "Um site que paga sats para quem cria arte ⚡",
     "",
     `🎨 Crie a sua e ganhe até ${INFO.limite_dia} sats por dia`,
     `🏴‍☠️ Ou tente invadir e roubar o pote${pote}: quem achar uma falha leva um prêmio e deixa o ecossistema Bitcoin mais forte`,
@@ -377,16 +382,20 @@ function convite(site) {
   ].join("\n");  // cabe nos 280 caracteres do X (links contam como 23)
 }
 
-$("compartilhar").addEventListener("click", async () => {
+// Funciona antes de gerar qualquer arte (só o convite) e depois (convite + a arte baixada).
+async function compartilhar(links, caixa) {
   const site = INFO.public_url || location.origin;
   const texto = convite(site);
-  if (ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })) {
-    try { await navigator.share({ files: [ultimoArquivo], text: texto, title: "Rede de Nós" }); return; }
+  const dados = ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })
+    ? { files: [ultimoArquivo], text: texto, title: "Rede de Nós" }
+    : { text: texto, title: "Rede de Nós" };
+  if (navigator.share && (!dados.files || navigator.canShare(dados))) {
+    try { await navigator.share(dados); return; }
     catch (e) { if (e.name === "AbortError") return; }
   }
   try { await navigator.clipboard.writeText(texto); } catch (e) {}
   const t = encodeURIComponent(texto), u = encodeURIComponent(site);
-  $("linksShare").innerHTML = "";
+  $(links).innerHTML = "";
   for (const [nome, href] of [
     ["X", `https://x.com/intent/post?text=${t}`],
     ["Telegram", `https://t.me/share/url?url=${u}&text=${encodeURIComponent(texto.replace(site, "").trim())}`],
@@ -394,10 +403,12 @@ $("compartilhar").addEventListener("click", async () => {
   ]) {
     const a = document.createElement("a");
     a.textContent = nome; a.href = href; a.target = "_blank"; a.rel = "noopener";
-    $("linksShare").appendChild(a);
+    $(links).appendChild(a);
   }
-  $("fallbackShare").hidden = false;
-});
+  $(caixa).hidden = false;
+}
+$("compartilhar").addEventListener("click", () => compartilhar("linksShare", "fallbackShare"));
+$("compartilharTopo").addEventListener("click", () => compartilhar("linksShareTopo", "fallbackShareTopo"));
 
 // ---------- GitHub e bug bounty ----------
 function configurarLinks() {

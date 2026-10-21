@@ -53,6 +53,17 @@
   .progresso span { display: block; font-size: 12px; color: #d9b9a3; margin-top: 5px; }
   .pote-linha { font-size: 12px; color: var(--muted); margin: 6px 2px 0; display: flex; gap: 6px; flex-wrap: wrap; }
   .pote-linha b { color: var(--text); }
+  /* ----- desafio: roubar o pote / chamar amigos (sempre visível) ----- */
+  .desafio { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 2px; }
+  .desafio button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 8px;
+    border-radius: 11px; font-weight: 700; font-size: 13.5px; }
+  .desafio .roubar { color: #ffd0c4; background: linear-gradient(135deg, #3b0d0d, #241010); border-color: #a3271a;
+    box-shadow: 0 0 0 0 #ff3b2a66; animation: alarme 2.6s ease-in-out infinite; }
+  .desafio .roubar:hover:not(:disabled) { border-color: #ff5a44; color: #fff; }
+  @keyframes alarme { 50% { box-shadow: 0 0 14px 2px #ff3b2a40; } }
+  .desafio .chamar { color: #ffd2ad; background: #2a1708; border-color: #6a3510; }
+  .desafio .chamar:hover:not(:disabled) { border-color: var(--accent); color: #fff; }
+  .desafio.sozinho { grid-template-columns: 1fr; }
   .apoie { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--muted);
     border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 
@@ -96,7 +107,8 @@
   .card .grande { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
   .card a { color: var(--accent-2); }
   .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-  .links a { font-size: 12.5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 20px; text-decoration: none; }
+  .links a { font-size: 12.5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 20px; text-decoration: none;
+    color: var(--accent-2); }
 
   /* ----- prévia ----- */
   main { position: relative; display: flex; align-items: center; justify-content: center; padding: 24px; min-width: 0; }
@@ -193,9 +205,17 @@
           <span id="txtProgresso">Hoje você ganhou 0 de 21 sats</span>
         </div>
       </div>
-      <div class="pote-linha">Pote coletivo: <b id="poteSaldo">…</b> · <button class="link" id="abrirDoar">doar sats ⚡</button> · <button class="link" id="abrirBounty3">ou tente roubar 🏴‍☠️</button></div>
+      <div class="pote-linha">Pote coletivo: <b id="poteSaldo">…</b> · <button class="link" id="abrirDoar">doar sats ⚡</button></div>
     </div>
     <div class="apoie" id="blocoApoie" hidden>Gostou? Apoie o projeto <button class="link" id="abrirDoar2">doar ⚡</button></div>
+    <div class="desafio" id="desafio">
+      <button class="roubar" id="abrirBounty3" hidden>🏴‍☠️ Tente roubar o pote</button>
+      <button class="chamar" id="compartilharTopo">📣 Desafiar amigos</button>
+    </div>
+    <div id="fallbackShareTopo" hidden>
+      <div class="msg">Convite copiado! Cole onde quiser ou mande por:</div>
+      <div class="links" id="linksShareTopo"></div>
+    </div>
 
     <section class="passo">
       <h2><span class="num">1</span> Escolha o símbolo</h2>
