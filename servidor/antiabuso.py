@@ -74,6 +74,12 @@ def segredo_confere(enviado, esperado):
     return isinstance(enviado, str) and hmac.compare_digest(enviado.encode(), esperado.encode())
 
 
+def na_lista(ip_texto, redes_):
+    """O IP (texto) está numa das redes? False se não for um IP."""
+    ip = _ip(ip_texto or "")
+    return ip is not None and any(ip in r for r in redes_)
+
+
 def ip_cliente(conexao, x_forwarded_for, proxies_confiaveis, segredo_ok=True):
     """IP real do visitante.
 

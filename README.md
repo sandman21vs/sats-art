@@ -59,6 +59,20 @@ Os pagamentos passam por uma conta [Coinos](https://coinos.io) dedicada.
    - mesmo que a porta fique exposta por engano, ninguém consegue falsificar o IP sem o segredo;
    - se o proxy roda em outra máquina, coloque o IP dela em `TRUSTED_PROXIES`;
    - rode sempre **um único processo** (o Dockerfile já faz isso).
+
+   **Com Cloudflare Tunnel (cloudflared) em vez de Caddy:** o Cloudflare manda o IP do visitante no `X-Forwarded-For`, mas não manda o `X-Proxy-Secret`. Sem ele, o app enxerga todo mundo com o IP do cloudflared: o primeiro visitante que sacar esgota a cota de sats do dia **para o site inteiro**, e os limites de prévia e exportação também passam a valer para todos juntos. Para resolver:
+   1. no servidor, copie o segredo: `grep PROXY_SECRET .env`;
+   2. no painel do Cloudflare, abra o domínio e vá em **Rules → Transform Rules → Modify Request Header → Create rule**;
+   3. filtro: **Hostname** *equals* o endereço do site;
+   4. ação: **Set static**, cabeçalho `X-Proxy-Secret`, valor = o `PROXY_SECRET` (o *Set static* sobrescreve o que o visitante mandar, então ninguém consegue forjar);
+   5. salve. Vale na hora, sem reiniciar o container.
+
+   O IP de onde o cloudflared se conecta ao app precisa estar em `TRUSTED_PROXIES` (o padrão cobre `127.0.0.0/8` e as redes Docker `172.16.0.0/12`). Se ele estiver em outra rede (ex.: `192.168.x.x`), acrescente a faixa no `.env` e rode `docker compose up -d`.
+
+   **Como conferir:** se o proxy estiver mal configurado, o log mostra a cada 10 minutos um evento de erro `proxy_sem_segredo` (falta o cabeçalho) ou `proxy_fora_da_lista` (falta a rede em `TRUSTED_PROXIES`); `segredo_proxy_invalido` indica segredo errado. Depois de configurar, os pedidos devem aparecer com hashes de IP diferentes:
+   ```bash
+   docker compose logs --since 10m | grep '"evento": "pedido"' | grep -o '"ip": "[^"]*"' | sort | uniq -c | sort -rn | head
+   ```
 5. **Coloque sats no pote:** mande alguns sats para o endereço de doação. As recompensas param sozinhas quando o pote chega em `POT_RESERVE_SATS`.
 
 Os dados (resgates, doações e controle de abuso) ficam em `./data/app.db`. Para atualizar: `git pull && docker compose up -d --build`.

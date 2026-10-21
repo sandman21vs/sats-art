@@ -190,14 +190,36 @@ async def _inesperado(req, e: Exception):
     return JSONResponse({"erro": "Erro interno. Tente de novo."}, status_code=500, headers=SEGURANCA)
 
 
+AVISO_PROXY_S = 600
+_avisos_proxy = {}  # tipo de aviso -> último instante (cada um sai no máximo a cada 10 min)
+
+
+def _avisar_proxy(tipo, **campos):
+    """Proxy mal configurado faz TODOS os visitantes parecerem um só IP (a cota de sats e os
+    limites viram do site inteiro). Isso não quebra nada visível: só o log pode avisar."""
+    agora = time.monotonic()
+    if agora - _avisos_proxy.get(tipo, float("-inf")) >= AVISO_PROXY_S:
+        _avisos_proxy[tipo] = agora
+        evento(tipo, "error", **campos)
+
+
 def ip_de(req: Request):
     xff = ",".join(req.headers.getlist("x-forwarded-for"))
     enviado = req.headers.get("x-proxy-secret")
     segredo_ok = antiabuso.segredo_confere(enviado, cfg.proxy_secret)
+    conexao = req.client.host if req.client else ""
     if enviado is not None and not segredo_ok and not getattr(req.state, "avisou_segredo", False):
-        req.state.avisou_segredo = True  # alguém tentou se passar pelo proxy
+        req.state.avisou_segredo = True  # alguém tentou se passar pelo proxy (ou o segredo do proxy está errado)
         evento("segredo_proxy_invalido", "warning", rota=req.url.path[:200])
-    return antiabuso.ip_cliente(req.client.host if req.client else "", xff, PROXIES, segredo_ok)
+    if cfg.trust_proxy and xff:
+        if enviado is None and antiabuso.na_lista(conexao, PROXIES):
+            _avisar_proxy("proxy_sem_segredo", acao="o proxy não manda X-Proxy-Secret: todos os visitantes "
+                          "contam como um só IP (veja 'Cloudflare Tunnel' ou o Caddyfile no README)")
+        elif enviado is not None and segredo_ok and not antiabuso.na_lista(conexao, PROXIES):
+            _avisar_proxy("proxy_fora_da_lista", conexao=conexao,
+                          acao="o segredo está certo, mas o proxy conecta de fora de TRUSTED_PROXIES: "
+                          "acrescente a rede dele em TRUSTED_PROXIES no .env")
+    return antiabuso.ip_cliente(conexao, xff, PROXIES, segredo_ok)
 
 
 def limitar(lim, chave, msg="Muitos pedidos seguidos. Espere um pouquinho."):
