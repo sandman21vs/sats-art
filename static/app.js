@@ -265,7 +265,6 @@ $("exportar").addEventListener("click", async () => {
     $("resultado").textContent = "Arte baixada! 🎉";
     mensagem($("msgResgate"), "");
     $("blocoReceber").hidden = true;
-    $("fallbackShare").hidden = true;
     $("cartao").scrollIntoView({ behavior: "smooth", block: "nearest" });
 
     const e = $("ln").value.trim();
@@ -396,33 +395,35 @@ function convite(site) {
   ].join("\n");  // cabe nos 280 caracteres do X (links contam como 23)
 }
 
-// Funciona antes de gerar qualquer arte (só o convite) e depois (convite + a arte baixada).
-async function compartilhar(links, caixa) {
+// Popup com o convite: copiar, X, Telegram, WhatsApp e (no celular) o compartilhamento do
+// sistema, que leva a arte junto. Funciona antes de gerar qualquer arte (só o convite).
+function abrirCompartilhar() {
   const site = INFO.public_url || location.origin;
   const texto = convite(site);
-  const dados = ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })
-    ? { files: [ultimoArquivo], text: texto, title: "Rede de Nós" }
-    : { text: texto, title: "Rede de Nós" };
-  if (navigator.share && (!dados.files || navigator.canShare(dados))) {
-    try { await navigator.share(dados); return; }
-    catch (e) { if (e.name === "AbortError") return; }
-  }
-  try { await navigator.clipboard.writeText(texto); } catch (e) {}
-  const t = encodeURIComponent(texto), u = encodeURIComponent(site);
-  $(links).innerHTML = "";
-  for (const [nome, href] of [
-    ["X", `https://x.com/intent/post?text=${t}`],
-    ["Telegram", `https://t.me/share/url?url=${u}&text=${encodeURIComponent(texto.replace(site, "").trim())}`],
-    ["WhatsApp", `https://wa.me/?text=${t}`],
-  ]) {
-    const a = document.createElement("a");
-    a.textContent = nome; a.href = href; a.target = "_blank"; a.rel = "noopener";
-    $(links).appendChild(a);
-  }
-  $(caixa).hidden = false;
+  $("textoConvite").value = texto;
+  const t = encodeURIComponent(texto);
+  $("shareX").href = `https://x.com/intent/post?text=${t}`;
+  $("shareTelegram").href = `https://t.me/share/url?url=${encodeURIComponent(site)}&text=${encodeURIComponent(texto.replace(site, "").trim())}`;
+  $("shareWhatsapp").href = `https://wa.me/?text=${t}`;
+  $("maisOpcoes").hidden = !navigator.share;
+  $("maisOpcoes").textContent = ultimoArquivo ? "📱 Mais opções (com a sua arte)" : "📱 Mais opções";
+  $("dicaArte").hidden = !ultimoArquivo;
+  $("copiarConvite").textContent = "📋 Copiar convite";
+  abrir("modalCompartilhar");
 }
-$("compartilhar").addEventListener("click", () => compartilhar("linksShare", "fallbackShare"));
-$("compartilharTopo").addEventListener("click", () => compartilhar("linksShareTopo", "fallbackShareTopo"));
+$("compartilhar").addEventListener("click", abrirCompartilhar);
+$("compartilharTopo").addEventListener("click", abrirCompartilhar);
+$("copiarConvite").addEventListener("click", async () => {
+  const b = $("copiarConvite");
+  try { await navigator.clipboard.writeText($("textoConvite").value); b.textContent = "✅ Copiado! Agora é só colar"; }
+  catch (e) { $("textoConvite").select(); b.textContent = "Selecione o texto e copie"; }
+});
+$("maisOpcoes").addEventListener("click", async () => {
+  const texto = $("textoConvite").value;
+  const dados = ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })
+    ? { files: [ultimoArquivo], text: texto, title: "Rede de Nós" } : { text: texto, title: "Rede de Nós" };
+  try { await navigator.share(dados); fechar("modalCompartilhar"); } catch (e) {}
+});
 
 // ---------- GitHub e bug bounty ----------
 function configurarLinks() {
