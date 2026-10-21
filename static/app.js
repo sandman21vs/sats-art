@@ -1,0 +1,472 @@
+"use strict";
+const SLIDERS = {
+  "sliders-basico": [
+    ["tamanho", "Tamanho do símbolo", 0.3, 2.0, 0.01],
+    ["brilho", "Brilho", 0.3, 2, 0.01],
+  ],
+  "sliders-avancado": [
+    ["angulo", "Inclinação (°)", -90, 90, 1],
+    ["zoom", "Zoom (tamanho do desenho na tela)", 1, 6, 0.05],
+    ["raio", "Tamanho do círculo", 150, 450, 1],
+    ["malha", "Espaço entre nós (menor = mais denso)", 8, 30, 0.5],
+    ["halo", "Largura do halo", 40, 300, 1],
+    ["poeira_longe", "Rede longe do símbolo", 0, 0.5, 0.01],
+    ["fundo", "Claridade do fundo", 0, 2.5, 0.01],
+  ],
+};
+const CORES = ["#ff6600", "#f7b500", "#ff3d6e", "#9b6bff", "#2fb4ff", "#21d39b", "#f2efe9"];
+const RESOLUCOES = [[1920, "Full HD · 1920×1080"], [3840, "4K · 3840×2160"], [5120, "5K · 5120×2880"], [7680, "8K · 7680×4320"]];
+const ANGULO_PADRAO = { sat: -21, imagem: 0 };
+const PADRAO = { fonte: "sat", angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
+  malha: 14, poeira_longe: 0.22, halo: 110, cor: "#ff6600", brilho: 1, fundo: 1, limiar: 60, inverter: false };
+
+const guardado = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) ?? padrao; } catch (e) { return padrao; } };
+const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+let estado = { ...PADRAO, ...guardado("rede-nos", {}) };
+if (!(estado.fonte in ANGULO_PADRAO) || estado.fonte === "imagem") {  // a imagem não fica salva entre sessões
+  Object.assign(estado, { fonte: "sat", angulo: ANGULO_PADRAO.sat });
+}
+delete estado.imagem_id;
+let INFO = { recompensas: false, max_export: 3840, recompensas_seq: [], limite_dia: 0 };
+let DIA = null;  // { feitos, ganho_hoje, restante_hoje, proxima }
+
+const $ = (id) => document.getElementById(id);
+const fmt = (v, step) => (step < 1 ? Number(v).toFixed(step < 0.1 ? 2 : 1) : String(v));
+const num = (n) => Number(n).toLocaleString("pt-BR");
+// JSON com Content-Type explícito: o servidor recusa POST sem ele (proteção contra CSRF)
+const postJSON = (url, corpo) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+const mensagem = (el, texto, tipo = "") => { el.className = "msg " + tipo; el.textContent = texto; };
+const enderecoValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.replace(/^lightning:/i, ""));
+// sem pagamentos externos liberados no servidor, só endereços @coinos.io recebem
+const enderecoAceito = (e) => enderecoValido(e) && (INFO.pagamento_externo || /@coinos\.io$/i.test(e.trim()));
+const ordinal = (i) => `${i + 1}ª`;
+
+// ---------- controles ----------
+for (const [box, list] of Object.entries(SLIDERS)) {
+  for (const [key, label, min, max, step] of list) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<label>${label} <span id="v-${key}"></span></label>
+      <input type="range" id="${key}" min="${min}" max="${max}" step="${step}">`;
+    $(box).appendChild(row);
+    const inp = row.querySelector("input");
+    inp.addEventListener("input", () => { estado[key] = parseFloat(inp.value); $("v-" + key).textContent = fmt(inp.value, step); mudou(); });
+  }
+}
+for (const c of CORES) {
+  const b = document.createElement("button");
+  b.style.background = c; b.dataset.cor = c; b.title = c; b.setAttribute("aria-label", "Cor " + c);
+  b.addEventListener("click", () => { estado.cor = c; sincronizar(); mudou(); });
+  $("cores").insertBefore(b, $("cores").querySelector(".outra"));
+}
+
+function sincronizar() {
+  for (const list of Object.values(SLIDERS)) for (const [key, , , , step] of list) {
+    $(key).value = estado[key]; $("v-" + key).textContent = fmt(estado[key], step);
+  }
+  $("seed").value = estado.seed;
+  $("circulo").checked = estado.circulo;
+  $("cor").value = estado.cor;
+  document.querySelectorAll("[data-cor]").forEach((b) => b.classList.toggle("on", b.dataset.cor === estado.cor));
+  $("limiar").value = estado.limiar; $("v-limiar").textContent = estado.limiar;
+  $("inverter").checked = estado.inverter;
+  document.querySelectorAll("[data-fonte]").forEach((b) => b.classList.toggle("on", b.dataset.fonte === estado.fonte));
+  $("imgopts").hidden = estado.fonte !== "imagem";
+}
+
+function salvar() { const { imagem_id, ...resto } = estado; guardar("rede-nos", resto); }
+
+// ---------- prévia ----------
+let timer, ocupado = false, pendente = false, primeiraPrevia = true;
+function mudou() {
+  salvar(); clearTimeout(timer); timer = setTimeout(renderizar, 220);
+  if (!primeiraPrevia) $("dica").hidden = true;
+}
+
+async function renderizar() {
+  if (ocupado) { pendente = true; return; }
+  ocupado = true;
+  const st = $("status");
+  st.className = "status busy"; st.textContent = "Desenhando…";
+  const t0 = performance.now();
+  try {
+    const r = await postJSON("/api/preview", estado);
+    if (!r.ok) throw new Error((await r.json()).erro || r.statusText);
+    const url = URL.createObjectURL(await r.blob());
+    const img = $("preview"), velho = img.src;
+    img.src = url; img.hidden = false;
+    if (velho.startsWith("blob:")) URL.revokeObjectURL(velho);
+    st.className = "status"; st.textContent = `Pronto em ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    primeiraPrevia = false;
+  } catch (e) {
+    st.className = "status erro"; st.textContent = e.message;
+  }
+  ocupado = false;
+  if (pendente) { pendente = false; renderizar(); }
+}
+
+// ---------- símbolo ----------
+document.querySelectorAll("[data-fonte]").forEach((b) => b.addEventListener("click", () => {
+  if (b.disabled) return;
+  estado.fonte = b.dataset.fonte;
+  estado.angulo = ANGULO_PADRAO[estado.fonte];
+  sincronizar(); mudou(); atualizarForma();
+}));
+
+async function carregarImagem(blob) {
+  if (!blob || !blob.type.startsWith("image/")) return;
+  const r = await fetch("/api/imagem", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+  const j = await r.json();
+  if (!r.ok) { $("status").className = "status erro"; $("status").textContent = j.erro; return; }
+  $("thumb").src = URL.createObjectURL(blob); $("thumb").hidden = false;
+  $("dropTxt").textContent = "Trocar imagem: arraste, cole ou clique";
+  estado.imagem_id = j.id;
+  estado.fonte = "imagem"; estado.angulo = 0;
+  document.querySelector('[data-fonte="imagem"]').disabled = false;
+  sincronizar(); atualizarForma(); mudou();
+}
+
+async function atualizarForma() {
+  if (estado.fonte !== "imagem") return;
+  const r = await postJSON("/api/forma", estado);
+  if (r.ok) $("shape").src = URL.createObjectURL(await r.blob());
+  else { $("status").className = "status erro"; $("status").textContent = (await r.json()).erro; }
+}
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", (e) => carregarImagem(e.target.files[0]));
+["dragenter", "dragover"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hover"); }));
+["dragleave", "drop"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === "drop" || e.target === document.documentElement) drop.classList.remove("hover"); }));
+document.addEventListener("drop", (e) => carregarImagem(e.dataTransfer.files[0]));
+document.addEventListener("paste", (e) => {
+  if (e.target.matches?.("input[type=text], input[type=number]")) return;
+  const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
+  if (item) carregarImagem(item.getAsFile());
+});
+
+$("limiar").addEventListener("input", (e) => { estado.limiar = parseInt(e.target.value); $("v-limiar").textContent = estado.limiar; atualizarForma(); mudou(); });
+$("inverter").addEventListener("change", (e) => { estado.inverter = e.target.checked; atualizarForma(); mudou(); });
+$("circulo").addEventListener("change", (e) => { estado.circulo = e.target.checked; mudou(); });
+$("seed").addEventListener("change", (e) => { estado.seed = parseInt(e.target.value) || 0; mudou(); });
+$("sortear").addEventListener("click", () => { estado.seed = Math.floor(Math.random() * 100000); $("seed").value = estado.seed; mudou(); });
+$("cor").addEventListener("input", (e) => { estado.cor = e.target.value; sincronizar(); mudou(); });
+$("reset").addEventListener("click", () => {
+  const { fonte, imagem_id, limiar, inverter } = estado;
+  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, angulo: ANGULO_PADRAO[fonte] };
+  sincronizar(); mudou();
+});
+
+// ---------- ganhe sats ----------
+async function carregarInfo() {
+  try {
+    const r = await fetch("/api/info");
+    if (!r.ok) return;  // mantém a informação anterior (ex.: 429 por excesso de pedidos)
+    INFO = await r.json();
+  } catch (e) { return; }
+  const sel = $("largura"), atual = sel.value;
+  sel.innerHTML = "";
+  for (const [w, nome] of RESOLUCOES.filter(([w]) => w <= INFO.max_export)) sel.add(new Option(nome, w));
+  sel.value = atual && [...sel.options].some((o) => o.value === atual) ? atual : sel.options[sel.options.length - 1].value;
+
+  configurarLinks();
+  $("blocoGanhe").hidden = !INFO.recompensas;
+  $("blocoEndereco").hidden = !INFO.recompensas;
+  $("blocoApoie").hidden = INFO.recompensas || !INFO.doacao_endereco;
+  $("tutGanhe").hidden = !INFO.recompensas;
+  $("tutTitulo").textContent = INFO.recompensas ? "Crie arte e ganhe sats ⚡" : "Crie sua arte ✨";
+  if (INFO.recompensas) {
+    const seq = INFO.recompensas_seq;
+    $("ganheTitulo").textContent = `Ganhe até ${INFO.limite_dia} sats por dia`;
+    $("ganheSub").textContent = seq.map((s, i) => `${s} sats na ${ordinal(i)} arte`).join(" + ") + ". Grátis!";
+    $("tutGanheTxt").textContent = `Coloque seu endereço Lightning: ${seq.map((s, i) => `${s} sats na ${ordinal(i)}`).join(", ")} arte do dia.`;
+    $("poteSaldo").textContent = INFO.pote == null ? "…" : `${num(INFO.pote)} sats`;
+    $("tituloPasso3").textContent = "Baixe e ganhe sats";
+    if (!INFO.pagamento_externo) {
+      $("ln").placeholder = "voce@coinos.io";
+      $("hintLn").innerHTML = "";
+      $("hintLn").append("Por enquanto pagamos para endereços ", Object.assign(document.createElement("b"), { textContent: "@coinos.io" }),
+        ". Não tem? Crie grátis em ", Object.assign(document.createElement("a"), { textContent: "coinos.io", href: "https://coinos.io", target: "_blank", rel: "noopener" }),
+        " (leva 1 minuto).");
+    }
+    await carregarDia();
+  }
+  atualizarBotao();
+}
+setInterval(carregarInfo, 60000);
+
+async function carregarDia() {
+  if (!INFO.recompensas) return;
+  try {
+    const r = await fetch("/api/meu-dia");
+    if (!r.ok) return;
+    DIA = await r.json();
+  } catch (err) { return; }
+  const pct = INFO.limite_dia ? (100 * DIA.ganho_hoje / INFO.limite_dia) : 0;
+  $("barra").style.width = pct + "%";
+  $("txtProgresso").textContent = DIA.proxima
+    ? `Hoje você ganhou ${DIA.ganho_hoje} de ${INFO.limite_dia} sats · a próxima arte vale ${DIA.proxima}`
+    : `Você ganhou os ${INFO.limite_dia} sats de hoje! 🎉 Volte amanhã.`;
+  atualizarBotao();
+}
+
+function atualizarBotao() {
+  const b = $("exportar"), e = $("ln").value.trim();
+  if (!INFO.recompensas) { b.textContent = "Baixar arte"; return; }
+  if (DIA && !DIA.proxima) b.textContent = "Baixar arte (sats de hoje já recebidos)";
+  else if (!enderecoValido(e)) b.textContent = `Baixar arte · ponha o endereço para ganhar ${DIA?.proxima || INFO.recompensas_seq[0]} sats`;
+  else if (!enderecoAceito(e)) b.textContent = "Baixar arte · use um endereço @coinos.io para ganhar";
+  else b.textContent = `Baixar e ganhar ${DIA?.proxima || INFO.recompensas_seq[0]} sats ⚡`;
+}
+$("ln").value = guardado("ln-endereco", "");
+let timerLn;
+$("ln").addEventListener("input", () => { clearTimeout(timerLn); timerLn = setTimeout(atualizarBotao, 150); });
+
+// ---------- exportar e receber ----------
+let ultimoArquivo = null, ultimoToken = null;
+
+function baixar(arquivo) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(arquivo); a.download = arquivo.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+$("exportar").addEventListener("click", async () => {
+  const btn = $("exportar"), msg = $("msgExport");
+  btn.disabled = true; $("dica").hidden = true; mensagem(msg, "Desenhando em alta resolução… leva alguns segundos");
+  try {
+    const corpo = { ...estado, largura: parseInt($("largura").value), nome: $("nome").value.trim() };
+    const r = await postJSON("/api/exportar", corpo);
+    if (!r.ok) throw new Error((await r.json()).erro || r.statusText);
+    const nome = r.headers.get("X-Nome-Arquivo") || "rede.png";
+    ultimoArquivo = new File([await r.blob()], nome, { type: "image/png" });
+    ultimoToken = r.headers.get("X-Token-Resgate");
+    baixar(ultimoArquivo);
+    mensagem(msg, "");
+    $("cartao").hidden = false;
+    $("resultado").textContent = "Arte baixada! 🎉";
+    mensagem($("msgResgate"), "");
+    $("blocoReceber").hidden = true;
+    $("fallbackShare").hidden = true;
+    $("cartao").scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+    const e = $("ln").value.trim();
+    if (INFO.recompensas && ultimoToken && (!DIA || DIA.proxima)) {
+      if (enderecoAceito(e)) await receber(e);
+      else {
+        mensagem($("msgResgate"), INFO.pagamento_externo || !enderecoValido(e)
+          ? `Coloque seu endereço Lightning no passo 3 e toque em receber para ganhar ${DIA?.proxima || ""} sats.`
+          : `Use um endereço @coinos.io no passo 3 e toque em receber para ganhar ${DIA?.proxima || ""} sats.`);
+        $("blocoReceber").hidden = false;
+        $("receber").disabled = false;
+        $("receber").textContent = `Receber ${DIA?.proxima || ""} sats ⚡`;
+      }
+    }
+  } catch (e) { mensagem(msg, e.message, "erro"); }
+  btn.disabled = false;
+});
+$("baixarDeNovo").addEventListener("click", (e) => { e.preventDefault(); if (ultimoArquivo) baixar(ultimoArquivo); });
+
+$("receber").addEventListener("click", () => {
+  const e = $("ln").value.trim();
+  if (!enderecoAceito(e)) {
+    $("ln").focus();
+    mensagem($("msgResgate"), INFO.pagamento_externo ? "Digite um endereço no formato voce@carteira.com no passo 3."
+      : "Por enquanto só pagamos para endereços @coinos.io. Crie o seu grátis em coinos.io.", "erro");
+    return;
+  }
+  receber(e);
+});
+
+async function receber(endereco) {
+  const msg = $("msgResgate");
+  guardar("ln-endereco", endereco);
+  $("blocoReceber").hidden = true;
+  try {
+    mensagem(msg, "Verificando que você é humano… (alguns segundos)");
+    const prova = await provaDeTrabalho();
+    mensagem(msg, "Enviando seus sats… ⚡");
+    const r = await postJSON("/api/resgatar", { token: ultimoToken, endereco, prova });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro);
+    $("resultado").textContent = `Você ganhou ${j.sats} sats! ⚡`;
+    mensagem(msg, j.proxima
+      ? `Já estão na sua carteira. Crie mais uma arte e ganhe mais ${j.proxima} sats hoje!`
+      : `Já estão na sua carteira. Você completou os ${INFO.limite_dia} sats de hoje. Volte amanhã!`, "sucesso");
+    chuvaDeSats(j.sats);
+    DIA = j; carregarInfo();
+  } catch (e) {
+    mensagem(msg, e.message, "erro");
+    $("blocoReceber").hidden = false;
+    $("receber").disabled = false;
+    $("receber").textContent = "Tentar de novo";
+  }
+}
+
+function chuvaDeSats(n) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (let i = 0; i < Math.min(n * 2, 30); i++) {
+    const s = document.createElement("span");
+    s.className = "cai"; s.textContent = "⚡";
+    s.style.left = Math.random() * 100 + "vw";
+    s.style.animationDelay = Math.random() * 0.8 + "s";
+    s.style.fontSize = 14 + Math.random() * 18 + "px";
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 3200);
+  }
+}
+
+// ---------- prova de trabalho (anti-robô), roda num worker ----------
+const POW_WORKER = `
+const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+const ror = (x, n) => (x >>> n) | (x << (32 - n));
+const w = new Int32Array(64);
+function sha256(s) {  // s: texto ASCII
+  const l = s.length, nW = (((l + 8) >> 6) + 1) * 16, m = new Int32Array(nW);
+  for (let i = 0; i < l; i++) m[i >> 2] |= s.charCodeAt(i) << (24 - (i % 4) * 8);
+  m[l >> 2] |= 0x80 << (24 - (l % 4) * 8);
+  m[nW - 1] = l * 8;
+  let H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  for (let j = 0; j < nW; j += 16) {
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let i = 0; i < 64; i++) {
+      if (i < 16) w[i] = m[j + i];
+      else {
+        const x = w[i - 15], y = w[i - 2];
+        w[i] = (w[i - 16] + (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) + w[i - 7] + (ror(y, 17) ^ ror(y, 19) ^ (y >>> 10))) | 0;
+      }
+      const t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) | 0;
+      const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    H = [H[0] + a | 0, H[1] + b | 0, H[2] + c | 0, H[3] + d | 0, H[4] + e | 0, H[5] + f | 0, H[6] + g | 0, H[7] + h | 0];
+  }
+  return H;
+}
+function zeros(H) { let n = 0; for (const x of H) { const z = Math.clz32(x); n += z; if (z < 32) break; } return n; }
+onmessage = (ev) => {
+  const { salt, bits } = ev.data;
+  for (let n = 0; ; n++) if (zeros(sha256(salt + ":" + n)) >= bits) { postMessage(String(n)); return; }
+};`;
+
+async function provaDeTrabalho() {
+  const rd = await fetch("/api/desafio");
+  const d = await rd.json();
+  if (!rd.ok) throw new Error(d.erro || "Tente de novo em instantes.");
+  const worker = new Worker(URL.createObjectURL(new Blob([POW_WORKER], { type: "text/javascript" })));
+  const nonce = await new Promise((ok) => { worker.onmessage = (e) => ok(e.data); worker.postMessage(d); });
+  worker.terminate();
+  return { ...d, nonce };
+}
+
+// ---------- compartilhar ----------
+$("compartilhar").addEventListener("click", async () => {
+  const site = INFO.public_url || location.origin;
+  const texto = INFO.recompensas
+    ? `Criei esta arte e ganhei sats ⚡ Crie a sua e ganhe também: ${site}`
+    : `Criei esta arte com a Rede de Nós. Crie a sua: ${site}`;
+  if (ultimoArquivo && navigator.canShare?.({ files: [ultimoArquivo] })) {
+    try { await navigator.share({ files: [ultimoArquivo], text: texto, title: "Rede de Nós" }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(texto); } catch (e) {}
+  const t = encodeURIComponent(texto), u = encodeURIComponent(site);
+  $("linksShare").innerHTML = "";
+  for (const [nome, href] of [
+    ["X", `https://x.com/intent/post?text=${t}`],
+    ["Telegram", `https://t.me/share/url?url=${u}&text=${t}`],
+    ["WhatsApp", `https://wa.me/?text=${t}`],
+  ]) {
+    const a = document.createElement("a");
+    a.textContent = nome; a.href = href; a.target = "_blank"; a.rel = "noopener";
+    $("linksShare").appendChild(a);
+  }
+  $("fallbackShare").hidden = false;
+});
+
+// ---------- GitHub e bug bounty ----------
+function configurarLinks() {
+  document.querySelectorAll("a.github").forEach((a) => {
+    if (INFO.repo_url) { a.href = INFO.repo_url; a.removeAttribute("aria-disabled"); a.title = "Código no GitHub"; }
+    else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.title = "Código no GitHub (em breve)"; }
+  });
+  const email = INFO.bounty_email || "";
+  $("bountyEmail").textContent = email;
+  $("bountyEmail").href = "mailto:" + email + "?subject=" + encodeURIComponent("Bug bounty - Rede de Nós");
+  $("bountyPct").textContent = (INFO.bounty_percentual || 70) + "%";
+  $("bountyRepo").hidden = !INFO.repo_url;
+  if (INFO.repo_url) $("bountyRepo").querySelector("a").href = INFO.repo_url.replace(/\/$/, "") + "/blob/main/SECURITY.md";
+}
+$("abrirBounty").addEventListener("click", () => abrir("modalBounty"));
+$("abrirBounty2").addEventListener("click", () => abrir("modalBounty"));
+
+// ---------- modais ----------
+function abrir(id) { $(id).hidden = false; }
+function fechar(id) { $(id).hidden = true; if (id === "modalDoar") clearInterval(pollDoacao); if (id === "tutorial") guardar("viu-tutorial", true); }
+document.querySelectorAll("[data-fechar]").forEach((b) => b.addEventListener("click", () => fechar(b.dataset.fechar)));
+document.querySelectorAll(".modal").forEach((m) => m.addEventListener("click", (e) => { if (e.target === m) fechar(m.id); }));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".modal:not([hidden])").forEach((m) => fechar(m.id)); });
+$("abrirTutorial").addEventListener("click", () => {
+  // reinicia a animação das etapas
+  $("tutorial").querySelectorAll(".etapas li").forEach((li) => { li.style.animation = "none"; li.offsetHeight; li.style.animation = ""; });
+  abrir("tutorial");
+});
+$("comecar").addEventListener("click", () => fechar("tutorial"));
+
+// ---------- doações ----------
+let pollDoacao = null;
+function abrirDoar() {
+  $("doarEndereco").hidden = !INFO.doacao_endereco;
+  if (INFO.doacao_endereco) { $("qrEndereco").innerHTML = INFO.doacao_qr; $("txtEndereco").textContent = INFO.doacao_endereco; }
+  $("doarValores").hidden = !INFO.recompensas;
+  $("doarInvoice").hidden = true;
+  mensagem($("msgDoar"), "");
+  abrir("modalDoar");
+}
+$("abrirDoar").addEventListener("click", abrirDoar);
+$("abrirDoar2").addEventListener("click", abrirDoar);
+
+async function gerarDoacao(sats) {
+  if (!(sats >= 1)) return;
+  clearInterval(pollDoacao);
+  mensagem($("msgDoar"), "Gerando cobrança…");
+  try {
+    const r = await postJSON("/api/doar", { sats });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro);
+    $("qrInvoice").innerHTML = j.qr;
+    $("txtInvoice").textContent = j.bolt11;
+    $("abrirCarteira").href = "lightning:" + j.bolt11;
+    $("doarInvoice").hidden = false;
+    $("doarEndereco").hidden = true;  // um QR por vez, para não confundir
+    mensagem($("msgDoar"), `Aguardando o pagamento de ${num(sats)} sats…`);
+    let tentativas = 0;
+    pollDoacao = setInterval(async () => {
+      if (++tentativas > 120) { clearInterval(pollDoacao); return; }
+      try {
+        const s = await (await fetch("/api/doar/" + encodeURIComponent(j.hash))).json();
+        if (s.pago) {
+          clearInterval(pollDoacao);
+          $("doarInvoice").hidden = true;
+          mensagem($("msgDoar"), `Obrigado! ⚡ ${num(sats)} sats entraram no pote.`, "sucesso");
+          chuvaDeSats(10);
+          carregarInfo();
+        }
+      } catch (e) {}
+    }, 5000);
+  } catch (e) { mensagem($("msgDoar"), e.message, "erro"); }
+}
+document.querySelectorAll("[data-doar]").forEach((b) => b.addEventListener("click", () => gerarDoacao(parseInt(b.dataset.doar))));
+$("doarOutroBtn").addEventListener("click", () => gerarDoacao(parseInt($("doarOutro").value)));
+document.querySelectorAll("[data-copiar]").forEach((b) => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($(b.dataset.copiar).textContent); b.textContent = "Copiado!"; }
+  catch (e) { b.textContent = "Selecione e copie"; }
+  setTimeout(() => (b.textContent = "Copiar"), 1500);
+}));
+
+// ---------- início ----------
+sincronizar();
+carregarInfo().then(() => { if (!guardado("viu-tutorial", false)) abrir("tutorial"); });
+renderizar();

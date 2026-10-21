@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+.DS_Store
+.env
+data/
+.pytest_cache/
+.claude/
+
+# imagens grandes ficam fora do repositório (publique em Releases)
+output/
+experimentos/*.png
+
+# relatórios de auditoria de segurança: ficam só na máquina do mantenedor
+AUDITORIA_SEGURANCA*.md
+REAUDITORIA_SEGURANCA*.md
+docs/PROMPT_AUDITORIA.md

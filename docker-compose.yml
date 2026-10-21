@@ -1,0 +1,19 @@
+services:
+  sats-art:
+    build: .
+    container_name: sats-art
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    # exposto só no próprio servidor; o proxy (Caddy/Traefik/Nginx) cuida do HTTPS
+    ports:
+      - "127.0.0.1:8000:8000"
+    mem_limit: 3g
+    cpus: 2
+    # sem isto o Docker guarda os logs da saída padrão para sempre (o disco enche)
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "5"

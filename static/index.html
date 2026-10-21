@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rede de Nós · crie arte, ganhe sats</title>
+<meta name="description" content="Transforme qualquer símbolo numa rede de nós de luz e ganhe sats por criar.">
+<style>
+  :root {
+    --bg: #0e0d0d; --panel: #171515; --line: #2a2625; --text: #ece6e2; --muted: #9a8f88;
+    --accent: #ff6600; --accent-2: #ffb27f; --accent-soft: #ff66001f; --ok: #7fd18b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  [hidden] { display: none !important; }
+  .app { display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 16px 18px 28px; }
+  .topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
+  h1 span { color: var(--accent); }
+  button, select, input[type=text], input[type=number] {
+    font: inherit; color: var(--text); background: #1f1c1b; border: 1px solid var(--line);
+    border-radius: 9px; padding: 8px 10px; }
+  input[type=text] { width: 100%; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid #ff660080; outline-offset: 1px; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #4a423f; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-2); }
+  button.link { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a0d04; font-weight: 700; width: 100%;
+    padding: 13px; font-size: 15px; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+  button.wide { width: 100%; }
+
+  /* ----- destaque: ganhe sats ----- */
+  .ganhe { position: relative; overflow: hidden; border-radius: 14px; padding: 14px; margin-bottom: 6px;
+    background: linear-gradient(135deg, #3a1a05, #24130a 55%, #1c1412); border: 1px solid #6a3510; }
+  .ganhe::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(110deg, transparent 30%, #ffffff14 50%, transparent 70%);
+    transform: translateX(-100%); animation: brilho 4s ease-in-out infinite; }
+  @keyframes brilho { 60%, 100% { transform: translateX(100%); } }
+  .ganhe .linha { display: flex; gap: 12px; align-items: center; }
+  .raio { font-size: 30px; filter: drop-shadow(0 0 10px #ff8a2a); animation: pulsar 1.8s ease-in-out infinite; }
+  @keyframes pulsar { 50% { transform: scale(1.15); filter: drop-shadow(0 0 18px #ffb050); } }
+  .ganhe b { display: block; font-size: 17px; color: #ffd2ad; }
+  .ganhe small { color: #d9b9a3; font-size: 12.5px; }
+  .progresso { margin-top: 12px; }
+  .barra { height: 8px; border-radius: 8px; background: #00000055; overflow: hidden; }
+  .barra i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff6600, #ffb050); border-radius: 8px;
+    transition: width .6s ease; }
+  .progresso span { display: block; font-size: 12px; color: #d9b9a3; margin-top: 5px; }
+  .pote-linha { font-size: 12px; color: var(--muted); margin: 6px 2px 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .pote-linha b { color: var(--text); }
+  .apoie { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+
+  /* ----- passos ----- */
+  .passo { margin-top: 20px; }
+  .passo h2 { display: flex; align-items: center; gap: 9px; font-size: 14px; margin: 0 0 10px; }
+  .num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px;
+    background: var(--accent); color: #1a0d04; font-weight: 800; flex: none; }
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .drop { margin-top: 8px; border: 1.5px dashed #3a3432; border-radius: 10px; padding: 12px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: .15s; font-size: 13px; }
+  .drop.hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .drop img { display: block; margin: 0 auto 8px; max-width: 100%; max-height: 100px; border-radius: 6px; }
+  .row { margin: 10px 0; }
+  .row label { display: flex; justify-content: space-between; color: var(--muted); font-size: 12.5px; margin-bottom: 4px; }
+  .row label span { color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; margin: 10px 0; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .inline { display: flex; gap: 6px; }
+  .inline > * { flex: 1; min-width: 0; }
+  .cores { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+  .cores button { width: 28px; height: 28px; border-radius: 50%; padding: 0; border: 2px solid transparent; }
+  .cores button.on { border-color: #fff; }
+  .cores .outra { position: relative; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    font-size: 15px; background: conic-gradient(#ff6600, #f7b500, #21d39b, #2fb4ff, #9b6bff, #ff3d6e, #ff6600); }
+  .cores .outra input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  details { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 4px 12px; }
+  summary { cursor: pointer; color: var(--muted); padding: 6px 0; font-size: 13px; }
+  details[open] summary { margin-bottom: 4px; }
+  .sub { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 4px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .msg { font-size: 13px; color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
+  .erro { color: #ff8a7a; }
+  .sucesso { color: var(--ok); }
+  .shape { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .shape img { width: 64px; height: 64px; border-radius: 6px; border: 1px solid var(--line); }
+  .shape div { font-size: 12px; color: var(--muted); }
+
+  .card { margin-top: 12px; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: #1b1817; }
+  .card .grande { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .card a { color: var(--accent-2); }
+  .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .links a { font-size: 12.5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 20px; text-decoration: none; }
+
+  /* ----- prévia ----- */
+  main { position: relative; display: flex; align-items: center; justify-content: center; padding: 24px; min-width: 0; }
+  #preview { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 10px 40px #000a; background: #000; }
+  .status { position: absolute; top: 14px; right: 18px; color: var(--muted); font-size: 12px;
+    background: #000a; padding: 5px 10px; border-radius: 20px; }
+  .status.busy::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin-right: 7px; animation: pisca 1s infinite; }
+  @keyframes pisca { 50% { opacity: .2; } }
+  .cantos { position: absolute; top: 14px; left: 18px; display: flex; gap: 8px; z-index: 3; }
+  .cantos a, .cantos button { display: inline-flex; align-items: center; gap: 6px; background: #000b; border: 1px solid #3a3432;
+    color: var(--text); border-radius: 20px; padding: 6px 12px; font-size: 13px; text-decoration: none; cursor: pointer; }
+  .cantos .bug { border-color: #6a3510; color: #ffd2ad; }
+  .cantos .bug:hover, .cantos a:hover { border-color: var(--accent); }
+  .cantos a[aria-disabled="true"] { opacity: .55; cursor: default; }
+  .atalhos { display: flex; gap: 10px; align-items: center; margin: -4px 0 12px; font-size: 13px; }
+  .atalhos a { color: var(--muted); display: inline-flex; }
+  .atalhos a:hover { color: var(--text); }
+  .modal a { color: var(--accent-2); }
+  .regras { margin: 10px 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .regras li { margin: 4px 0; }
+  .destaque { font-size: 15px; color: #ffd2ad; margin: 8px 0; }
+  .dica { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: #000c; border: 1px solid var(--line);
+    padding: 8px 14px; border-radius: 20px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+  /* ----- modais ----- */
+  .modal { position: fixed; inset: 0; background: #000c; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .modal .box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; width: min(400px, 100%);
+    max-height: 100%; overflow-y: auto; position: relative; }
+  .modal h3 { margin: 0 0 6px; font-size: 18px; }
+  .fechar { position: absolute; top: 10px; right: 10px; padding: 4px 9px; }
+  .qr { background: #fff; border-radius: 10px; padding: 8px; width: 200px; margin: 12px auto; }
+  .qr svg { display: block; width: 100%; height: auto; }
+  .copia { display: flex; gap: 6px; align-items: center; }
+  .copia code { flex: 1; font-size: 12px; background: #0f0d0d; border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .valores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0; }
+
+  /* tutorial */
+  .demo { display: block; width: 180px; margin: 4px auto 10px; }
+  .demo line { stroke: #ff6600; stroke-width: 1.4; stroke-dasharray: 60; stroke-dashoffset: 60; animation: liga 2.4s ease forwards infinite; }
+  .demo circle { fill: #ffd9b8; filter: drop-shadow(0 0 4px #ff7a1a); animation: acende 2.4s ease infinite; }
+  @keyframes liga { 40%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+  @keyframes acende { 0% { opacity: .2; } 30%, 85% { opacity: 1; } 100% { opacity: .2; } }
+  .etapas { list-style: none; padding: 0; margin: 12px 0 16px; display: grid; gap: 10px; }
+  .etapas li { display: flex; gap: 12px; align-items: flex-start; opacity: 0; transform: translateY(8px); animation: entra .5s ease forwards; }
+  .etapas li:nth-child(2) { animation-delay: .25s; }
+  .etapas li:nth-child(3) { animation-delay: .5s; }
+  .etapas li:nth-child(4) { animation-delay: .75s; }
+  @keyframes entra { to { opacity: 1; transform: none; } }
+  .etapas .ico { font-size: 22px; width: 32px; text-align: center; flex: none; }
+  .etapas b { display: block; }
+  .etapas span { color: var(--muted); font-size: 13px; }
+
+  /* chuva de sats */
+  .cai { position: fixed; top: -40px; font-size: 22px; pointer-events: none; z-index: 20;
+    animation: cair 2.2s ease-in forwards; filter: drop-shadow(0 0 6px #ff9a3a); }
+  @keyframes cair { to { transform: translateY(110vh) rotate(25deg); opacity: .7; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .etapas li { opacity: 1; transform: none; }
+    .demo line { stroke-dashoffset: 0; }
+  }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    main { padding: 10px; order: -1; position: sticky; top: 0; background: var(--bg); z-index: 2; border-bottom: 1px solid var(--line); }
+    .status { top: 16px; right: 16px; }
+    .dica { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="topo">
+      <h1><span>⚡</span> Rede de Nós</h1>
+      <button class="link" id="abrirTutorial">Como funciona?</button>
+    </div>
+    <div class="atalhos">
+      <button class="link" id="abrirBounty2">🐞 Bug bounty</button>
+      <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    </div>
+
+    <div id="blocoGanhe" hidden>
+      <div class="ganhe">
+        <div class="linha">
+          <div class="raio" aria-hidden="true">⚡</div>
+          <div><b id="ganheTitulo">Ganhe até 21 sats por dia</b><small id="ganheSub">Crie uma arte, baixe e receba na hora.</small></div>
+        </div>
+        <div class="progresso">
+          <div class="barra"><i id="barra"></i></div>
+          <span id="txtProgresso">Hoje você ganhou 0 de 21 sats</span>
+        </div>
+      </div>
+      <div class="pote-linha">Pote coletivo: <b id="poteSaldo">…</b> · <button class="link" id="abrirDoar">doar sats ⚡</button></div>
+    </div>
+    <div class="apoie" id="blocoApoie" hidden>Gostou? Apoie o projeto <button class="link" id="abrirDoar2">doar ⚡</button></div>
+
+    <section class="passo">
+      <h2><span class="num">1</span> Escolha o símbolo</h2>
+      <div class="presets">
+        <button data-fonte="sat">Sat (exemplo)</button>
+        <button data-fonte="imagem" disabled>Sua imagem</button>
+      </div>
+      <div class="drop" id="drop">
+        <img id="thumb" hidden alt="">
+        <div id="dropTxt">Use qualquer logo: <b>arraste</b>, <b>cole um print</b> (Ctrl/⌘+V) ou <b>clique</b> para escolher</div>
+      </div>
+      <input type="file" id="file" accept="image/*" hidden>
+      <div id="imgopts" hidden>
+        <div class="shape"><img id="shape" alt="forma detectada"><div>Assim entendemos sua imagem. Se veio errado, ajuste abaixo.</div></div>
+        <div class="row"><label>Sensibilidade <span id="v-limiar"></span></label>
+          <input type="range" id="limiar" min="5" max="200" step="1"></div>
+        <label class="check"><input type="checkbox" id="inverter"> Inverter (símbolo escuro ↔ claro)</label>
+      </div>
+    </section>
+
+    <section class="passo">
+      <h2><span class="num">2</span> Deixe do seu jeito</h2>
+      <div class="row"><label>Cor</label>
+        <div class="cores" id="cores">
+          <label class="outra" title="Escolher outra cor">🎨<input type="color" id="cor"></label>
+        </div>
+      </div>
+      <div id="sliders-basico"></div>
+      <div class="inline">
+        <button id="sortear">🎲 Nova variação</button>
+        <label class="check" style="margin:0;justify-content:center"><input type="checkbox" id="circulo"> Círculo</label>
+      </div>
+      <details>
+        <summary>Mais ajustes</summary>
+        <div id="sliders-avancado"></div>
+        <div class="row"><label>Semente (cada número é uma rede diferente)</label><input type="number" id="seed" step="1" style="width:100%"></div>
+        <div class="row"><label>Resolução</label><select id="largura" style="width:100%"></select></div>
+        <div class="row"><label>Nome do arquivo</label><input type="text" id="nome" placeholder="opcional"></div>
+        <div class="row"><button id="reset" class="wide">Restaurar padrões</button></div>
+      </details>
+    </section>
+
+    <section class="passo">
+      <h2><span class="num">3</span> <span id="tituloPasso3">Baixe sua arte</span></h2>
+      <div id="blocoEndereco" hidden>
+        <div class="row" style="margin-top:0"><label>Seu endereço Lightning, para receber os sats</label>
+          <input type="text" id="ln" placeholder="voce@carteira.com" autocomplete="off" spellcheck="false" inputmode="email"></div>
+        <div class="hint" id="hintLn">Funciona com Coinos, Wallet of Satoshi, Blink, Alby e outras carteiras Lightning.</div>
+      </div>
+      <div class="row"><button class="primary" id="exportar">Baixar arte</button></div>
+      <div class="msg" id="msgExport"></div>
+
+      <div class="card" id="cartao" hidden>
+        <div class="grande" id="resultado">Arte baixada! 🎉</div>
+        <div class="msg" id="msgResgate" style="margin-top:0"></div>
+        <div class="row" id="blocoReceber" hidden><button class="primary" id="receber">Receber sats ⚡</button></div>
+        <div class="row"><button class="wide" id="compartilhar">📣 Compartilhar e chamar amigos</button></div>
+        <div id="fallbackShare" hidden>
+          <div class="msg">Texto copiado! Poste junto com a arte que você baixou:</div>
+          <div class="links" id="linksShare"></div>
+        </div>
+        <div class="hint"><a href="#" id="baixarDeNovo">Baixar de novo</a></div>
+      </div>
+    </section>
+  </aside>
+
+  <main>
+    <div class="cantos">
+      <button class="bug" id="abrirBounty">🐞 Bug bounty</button>
+      <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+    </div>
+    <img id="preview" alt="Prévia da arte" hidden>
+    <div class="status" id="status">Carregando…</div>
+    <div class="dica" id="dica">Sua arte aparece aqui e muda na hora conforme você ajusta ←</div>
+  </main>
+</div>
+
+<!-- tutorial -->
+<div class="modal" id="tutorial" hidden>
+  <div class="box">
+    <button class="fechar" data-fechar="tutorial" aria-label="Fechar">✕</button>
+    <svg class="demo" viewBox="0 0 120 80" aria-hidden="true">
+      <line x1="20" y1="40" x2="45" y2="18"/><line x1="45" y1="18" x2="75" y2="20"/><line x1="75" y1="20" x2="100" y2="42"/>
+      <line x1="100" y1="42" x2="76" y2="64"/><line x1="76" y1="64" x2="44" y2="62"/><line x1="44" y1="62" x2="20" y2="40"/>
+      <line x1="45" y1="18" x2="60" y2="40"/><line x1="60" y1="40" x2="76" y2="64"/>
+      <circle cx="20" cy="40" r="2.6"/><circle cx="45" cy="18" r="2.6"/><circle cx="75" cy="20" r="2.6"/><circle cx="100" cy="42" r="2.6"/>
+      <circle cx="76" cy="64" r="2.6"/><circle cx="44" cy="62" r="2.6"/><circle cx="60" cy="40" r="3.4"/>
+    </svg>
+    <h3 id="tutTitulo">Crie arte e ganhe sats ⚡</h3>
+    <ol class="etapas">
+      <li><div class="ico">🎨</div><div><b>Escolha um símbolo</b><span>Use o exemplo ou cole o print de qualquer logo.</span></div></li>
+      <li><div class="ico">✨</div><div><b>Deixe do seu jeito</b><span>Troque a cor, o tamanho e sorteie variações. A prévia muda na hora.</span></div></li>
+      <li id="tutGanhe"><div class="ico">⚡</div><div><b>Baixe e ganhe sats</b><span id="tutGanheTxt">Coloque seu endereço Lightning e receba na hora.</span></div></li>
+      <li><div class="ico">📣</div><div><b>Compartilhe</b><span>Mostre sua arte e chame mais gente para criar.</span></div></li>
+    </ol>
+    <button class="primary" id="comecar">Começar</button>
+  </div>
+</div>
+
+<!-- bug bounty -->
+<div class="modal" id="modalBounty" hidden>
+  <div class="box">
+    <button class="fechar" data-fechar="modalBounty" aria-label="Fechar">✕</button>
+    <h3>🐞 Bug bounty: pode atacar</h3>
+    <div class="hint">Este projeto é open source e roda de propósito com pouco dinheiro no pote. Ataques são bem-vindos: é assim que ele fica seguro.</div>
+    <p class="destaque">Conseguiu esvaziar o pote? Fique com <b id="bountyPct">70%</b> do que pegou.</p>
+    <ol class="regras">
+      <li>Mande um e-mail para <a id="bountyEmail" href="#"></a> explicando como fez (passo a passo, se puder).</li>
+      <li>Devolva o restante para o endereço de doação do pote, para o projeto continuar pagando outras pessoas.</li>
+      <li>Achou uma falha sem conseguir tirar sats? Mande também: entra nos créditos do projeto.</li>
+    </ol>
+    <div class="hint"><b>Fora do escopo:</b> atacar a Coinos, carteiras ou serviços de terceiros, outros visitantes, a hospedagem ou a rede (DDoS volumétrico), e engenharia social. Vale só esta instância e este pote.</div>
+    <div class="row" id="bountyRepo" hidden><a href="#" target="_blank" rel="noopener" style="color:var(--accent-2)">Regras completas (SECURITY.md)</a></div>
+  </div>
+</div>
+
+<!-- doações -->
+<div class="modal" id="modalDoar" hidden>
+  <div class="box">
+    <button class="fechar" data-fechar="modalDoar" aria-label="Fechar">✕</button>
+    <h3>Doe para o pote ⚡</h3>
+    <div class="hint">Os sats doados pagam quem cria artes. Quanto mais gente doa, mais gente ganha.</div>
+    <div id="doarEndereco" hidden>
+      <div class="qr" id="qrEndereco"></div>
+      <div class="copia"><code id="txtEndereco"></code><button data-copiar="txtEndereco">Copiar</button></div>
+    </div>
+    <div id="doarValores" hidden>
+      <div class="hint" style="margin-top:14px">Ou gere uma cobrança de valor fixo:</div>
+      <div class="valores">
+        <button data-doar="21">21</button><button data-doar="210">210</button><button data-doar="2100">2100</button>
+      </div>
+      <div class="inline"><input type="number" id="doarOutro" min="1" placeholder="outro valor"><button id="doarOutroBtn">Gerar</button></div>
+    </div>
+    <div id="doarInvoice" hidden>
+      <div class="qr" id="qrInvoice"></div>
+      <div class="copia"><code id="txtInvoice"></code><button data-copiar="txtInvoice">Copiar</button></div>
+      <div class="row"><a id="abrirCarteira" href="#" style="color:var(--accent-2)">Abrir na carteira</a></div>
+    </div>
+    <div class="msg" id="msgDoar"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
