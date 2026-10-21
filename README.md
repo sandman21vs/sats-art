@@ -129,6 +129,7 @@ grep '"evento": "pedido_recusado"' data/logs/eventos.jsonl | tail
 Dê dois cliques em **`Abrir app.command`**. Na primeira vez ele instala o que precisa, depois abre o app no navegador. No modo local não há recompensas, a exportação vai até 8K e os arquivos são salvos também em `output/`.
 
 - **Símbolo:** escolha o Sat ou arraste uma imagem, cole um print (⌘V) ou clique para escolher. O app detecta a forma. Se vier errada, ajuste o **limiar** ou marque **inverter**.
+- **Formato:** deitada (16:9, para computador) ou em pé (9:16, para tela de celular). No celular em pé, o site já começa no formato em pé.
 - **Ajustes:** tamanho, inclinação, zoom, círculo ligado/desligado, semente, densidade, halo, brilho, cor e fundo. A prévia é a imagem final em tamanho menor.
 
 Pelo Terminal: `.venv/bin/python app.py`.
@@ -138,9 +139,10 @@ Pelo Terminal: `.venv/bin/python app.py`.
 ```bash
 .venv/bin/python -m motor.rede_nos sat
 .venv/bin/python -m motor.rede_nos sat -21 21 7680 2.7 --sem-circulo
+.venv/bin/python -m motor.rede_nos sat -21 21 7680 2.7 --retrato   # em pé (4320x7680)
 ```
 
-Os argumentos são `<simbolo> [angulo] [seed] [largura_px] [px_por_unidade] [--sem-circulo]`. A imagem vai para `output/`.
+Os argumentos são `<simbolo> [angulo] [seed] [lado_px] [px_por_unidade] [--sem-circulo] [--retrato]`; `lado_px` é sempre o lado maior. A imagem vai para `output/`.
 
 Para ter um símbolo fixo novo, crie uma função em `motor/simbolos.py` que devolva a geometria shapely centrada em `(cx, cy)` (o disco tem 300 unidades de raio) e registre a função em `SIMBOLOS`.
 

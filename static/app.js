@@ -15,15 +15,22 @@ const SLIDERS = {
   ],
 };
 const CORES = ["#ff6600", "#f7b500", "#ff3d6e", "#9b6bff", "#2fb4ff", "#21d39b", "#f2efe9"];
-const RESOLUCOES = [[1920, "Full HD · 1920×1080"], [3840, "4K · 3840×2160"], [5120, "5K · 5120×2880"], [7680, "8K · 7680×4320"]];
+// [lado maior em px, nome]; as dimensões do rótulo seguem o formato (paisagem ou retrato)
+const RESOLUCOES = [[1920, "Full HD"], [3840, "4K"], [5120, "5K"], [7680, "8K"]];
+const dimensoes = (lado) => (estado.retrato ? [lado * 9 / 16, lado] : [lado, lado * 9 / 16]);
+const rotulo = (lado, nome) => `${nome} · ${dimensoes(lado).join("×")}`;
 const ANGULO_PADRAO = { sat: -21, imagem: 0 };
-const PADRAO = { fonte: "sat", angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
+const PADRAO = { fonte: "sat", retrato: false, angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
   malha: 14, poeira_longe: 0.22, halo: 110, cor: "#ff6600", brilho: 1, fundo: 1, limiar: 60, inverter: false };
 
 const guardado = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) ?? padrao; } catch (e) { return padrao; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 let estado = { ...PADRAO, ...guardado("rede-nos", {}) };
+// primeira visita pelo celular em pé: já começa no formato da tela do celular
+if (guardado("rede-nos", null) === null && matchMedia("(orientation: portrait) and (max-width: 760px)").matches) {
+  estado.retrato = true;
+}
 if (!(estado.fonte in ANGULO_PADRAO) || estado.fonte === "imagem") {  // a imagem não fica salva entre sessões
   Object.assign(estado, { fonte: "sat", angulo: ANGULO_PADRAO.sat });
 }
@@ -73,6 +80,9 @@ function sincronizar() {
   $("inverter").checked = estado.inverter;
   document.querySelectorAll("[data-fonte]").forEach((b) => b.classList.toggle("on", b.dataset.fonte === estado.fonte));
   $("imgopts").hidden = estado.fonte !== "imagem";
+  document.querySelectorAll("[data-formato]").forEach((b) => b.classList.toggle("on", (b.dataset.formato === "retrato") === estado.retrato));
+  document.body.classList.toggle("retrato", estado.retrato);
+  for (const o of $("largura").options) o.textContent = rotulo(Number(o.value), RESOLUCOES.find(([w]) => w === Number(o.value))[1]);
 }
 
 function salvar() { const { imagem_id, ...resto } = estado; guardar("rede-nos", resto); }
@@ -148,13 +158,17 @@ document.addEventListener("paste", (e) => {
 
 $("limiar").addEventListener("input", (e) => { estado.limiar = parseInt(e.target.value); $("v-limiar").textContent = estado.limiar; atualizarForma(); mudou(); });
 $("inverter").addEventListener("change", (e) => { estado.inverter = e.target.checked; atualizarForma(); mudou(); });
+document.querySelectorAll("[data-formato]").forEach((b) => b.addEventListener("click", () => {
+  estado.retrato = b.dataset.formato === "retrato";
+  sincronizar(); mudou();
+}));
 $("circulo").addEventListener("change", (e) => { estado.circulo = e.target.checked; mudou(); });
 $("seed").addEventListener("change", (e) => { estado.seed = parseInt(e.target.value) || 0; mudou(); });
 $("sortear").addEventListener("click", () => { estado.seed = Math.floor(Math.random() * 100000); $("seed").value = estado.seed; mudou(); });
 $("cor").addEventListener("input", (e) => { estado.cor = e.target.value; sincronizar(); mudou(); });
 $("reset").addEventListener("click", () => {
-  const { fonte, imagem_id, limiar, inverter } = estado;
-  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, angulo: ANGULO_PADRAO[fonte] };
+  const { fonte, imagem_id, limiar, inverter, retrato } = estado;  // o formato escolhido fica
+  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, angulo: ANGULO_PADRAO[fonte] };
   sincronizar(); mudou();
 });
 
@@ -167,7 +181,7 @@ async function carregarInfo() {
   } catch (e) { return; }
   const sel = $("largura"), atual = sel.value;
   sel.innerHTML = "";
-  for (const [w, nome] of RESOLUCOES.filter(([w]) => w <= INFO.max_export)) sel.add(new Option(nome, w));
+  for (const [w, nome] of RESOLUCOES.filter(([w]) => w <= INFO.max_export)) sel.add(new Option(rotulo(w, nome), w));
   sel.value = atual && [...sel.options].some((o) => o.value === atual) ? atual : sel.options[sel.options.length - 1].value;
 
   configurarLinks();

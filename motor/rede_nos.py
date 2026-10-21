@@ -5,9 +5,10 @@ Aqui a "tinta" é uma malha de nós: densa nas bordas (onde a Monero tinha os
 feixes de rabisco), mais solta no interior, e se espalhando em poeira até as
 bordas da tela, para poder recortar/dar zoom em qualquer enquadramento.
 
-Uso: python -m motor.rede_nos <simbolo> [angulo] [seed] [largura_px] [px_por_unidade] [--sem-circulo]
+Uso: python -m motor.rede_nos <simbolo> [angulo] [seed] [lado_px] [px_por_unidade] [--sem-circulo] [--retrato]
   simbolo: um dos definidos em motor/simbolos.py (sat)
   --sem-circulo: sem o disco; a rede se adensa em volta do próprio símbolo
+  --retrato: 9:16 (tela de celular) em vez de 16:9; lado_px é sempre o lado MAIOR
   padrão: ângulo do próprio símbolo, seed 21, 7680 px (8K, 16:9), 2.7 px por unidade
   (o círculo tem 300 unidades de raio -> 810 px em 8K)
 
@@ -43,6 +44,7 @@ class Config:
     malha: float = 14.0         # distância mínima entre nós do interior (menor = mais denso)
     poeira_longe: float = 0.22  # quanto da rede sobra longe do símbolo (0 = vazio)
     halo: float = 110.0         # largura do halo em volta do círculo/símbolo
+    retrato: bool = False       # 9:16 (celular) em vez de 16:9; o desenho mantém o tamanho
     # pintura (só muda a cor)
     cor: str = "#ff6600"
     brilho: float = 1.0
@@ -50,7 +52,7 @@ class Config:
 
     def chave_rede(self):
         return (self.angulo, self.seed, self.circulo, self.tamanho, self.raio,
-                self.zoom, self.malha, self.poeira_longe, self.halo)
+                self.zoom, self.malha, self.poeira_longe, self.halo, self.retrato)
 
 
 class Node:
@@ -75,6 +77,8 @@ class Rede:
 def construir_rede(make_holes, cfg: Config) -> Rede:
     rnd = random.Random(cfg.seed)
     W, H = REF_W / cfg.zoom, REF_W * 9 / 16 / cfg.zoom   # tela em unidades
+    if cfg.retrato:  # mesma área e mesma escala, só gira a moldura
+        W, H = H, W
     CX, CY = W / 2, H / 2
     R = cfg.raio
     circulo = cfg.circulo
@@ -232,9 +236,16 @@ def _hex(c):
     return np.array([int(c[i:i + 2], 16) for i in (0, 2, 4)], float)
 
 
-def pintar(rede: Rede, cfg: Config, out_w=REF_W) -> Image.Image:
-    out_h = out_w * 9 // 16
-    U = cfg.zoom * (out_w / REF_W)  # px de saída por unidade
+def dimensoes(lado, retrato=False):
+    """(largura, altura) em px para `lado` = o lado maior da imagem."""
+    curto = lado * 9 // 16
+    return (curto, lado) if retrato else (lado, curto)
+
+
+def pintar(rede: Rede, cfg: Config, lado=REF_W) -> Image.Image:
+    """`lado` = lado MAIOR da imagem, em px (a largura no paisagem, a altura no retrato)."""
+    out_w, out_h = dimensoes(lado, cfg.retrato)
+    U = cfg.zoom * (lado / REF_W)  # px de saída por unidade (igual nos dois formatos)
     S = U * SS                     # px de desenho por unidade
 
     base = _hex(cfg.cor)
@@ -310,19 +321,21 @@ def main():
     from motor.simbolos import SIMBOLOS
 
     circulo = "--sem-circulo" not in sys.argv
-    args = [a for a in sys.argv if a != "--sem-circulo"]
+    retrato = "--retrato" in sys.argv
+    args = [a for a in sys.argv if a not in ("--sem-circulo", "--retrato")]
     simbolo = args[1] if len(args) > 1 else "sat"
     make_holes, default_angle = SIMBOLOS[simbolo]
     cfg = Config(angulo=float(args[2]) if len(args) > 2 else default_angle,
                  seed=int(args[3]) if len(args) > 3 else 21,
-                 circulo=circulo,
+                 circulo=circulo, retrato=retrato,
                  zoom=float(args[5]) if len(args) > 5 else 2.7)
-    out_w = int(args[4]) if len(args) > 4 else REF_W
+    lado = int(args[4]) if len(args) > 4 else REF_W
 
     rede = construir_rede(make_holes, cfg)
-    img = pintar(rede, cfg, out_w)
+    img = pintar(rede, cfg, lado)
     os.makedirs("output", exist_ok=True)
-    name = f"output/{simbolo}_nodes{'' if circulo else '_sem_circulo'}_{out_w}x{out_w * 9 // 16}.png"
+    w, h = dimensoes(lado, retrato)
+    name = f"output/{simbolo}_nodes{'' if circulo else '_sem_circulo'}_{w}x{h}.png"
     img.save(name)
     print(name, len(rede.nodes), "nós,", len(rede.edges), "conexões")
 

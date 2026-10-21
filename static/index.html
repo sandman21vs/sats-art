@@ -73,6 +73,8 @@
   .num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px;
     background: var(--accent); color: #1a0d04; font-weight: 800; flex: none; }
   .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .formato small { display: block; font-size: 11px; color: var(--muted); }
+  .formato .on small { color: var(--accent-2); }
   .drop { margin-top: 8px; border: 1.5px dashed #3a3432; border-radius: 10px; padding: 12px; text-align: center;
     color: var(--muted); cursor: pointer; transition: .15s; font-size: 13px; }
   .drop.hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
@@ -178,6 +180,7 @@
     aside { border-right: 0; border-bottom: 1px solid var(--line); }
     main { padding: 10px; order: -1; position: sticky; top: 0; background: var(--bg); z-index: 2; border-bottom: 1px solid var(--line); }
     .status { top: 16px; right: 16px; }
+    #preview { max-height: 46vh; }  /* a prévia em pé não pode ocupar a tela toda */
     .dica { display: none; }
   }
 </style>
@@ -238,6 +241,12 @@
 
     <section class="passo">
       <h2><span class="num">2</span> Deixe do seu jeito</h2>
+      <div class="row" style="margin-top:0"><label>Formato</label>
+        <div class="presets formato">
+          <button data-formato="paisagem">🖥️ Deitada <small>computador</small></button>
+          <button data-formato="retrato">📱 Em pé <small>celular</small></button>
+        </div>
+      </div>
       <div class="row"><label>Cor</label>
         <div class="cores" id="cores">
           <label class="outra" title="Escolher outra cor">🎨<input type="color" id="cor"></label>

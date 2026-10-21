@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from shapely.affinity import scale, translate
 
 from motor.forma_imagem import ImagemInvalida, forma_normalizada, holes_de_forma, reduzir
-from motor.rede_nos import Config, construir_rede, pintar
+from motor.rede_nos import Config, construir_rede, dimensoes, pintar
 from motor.simbolos import SIMBOLOS
 
 from .eventos import evento
@@ -143,9 +143,9 @@ class Renderizador:
         for k, v in p.items():
             if k not in nomes:
                 continue
-            if k == "circulo":
+            if k in ("circulo", "retrato"):
                 if not isinstance(v, bool):
-                    raise ParametroInvalido("Parâmetro circulo inválido.")
+                    raise ParametroInvalido(f"Parâmetro {k} inválido.")
                 kw[k] = v
             elif k == "cor":
                 if not (isinstance(v, str) and len(v) == 7 and v[0] == "#"):
@@ -281,4 +281,4 @@ def para_bytes(im, fmt="JPEG"):
     return buf.getvalue()
 
 
-__all__ = ["Renderizador", "ParametroInvalido", "ImagemInvalida", "Ocupado", "Excesso", "para_bytes"]
+__all__ = ["dimensoes", "Renderizador", "ParametroInvalido", "ImagemInvalida", "Ocupado", "Excesso", "para_bytes"]

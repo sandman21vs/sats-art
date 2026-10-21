@@ -25,7 +25,7 @@ from .config import Config
 from .db import DB
 from .lnurl import LnurlErro
 from .recompensas import Recompensas, ResgateErro
-from .render import Excesso, ImagemInvalida, Ocupado, ParametroInvalido, Renderizador
+from .render import Excesso, ImagemInvalida, Ocupado, ParametroInvalido, Renderizador, dimensoes
 
 log = logging.getLogger("servidor")
 
@@ -429,7 +429,8 @@ async def exportar(req: Request):
     png, c = await gerar_ou_recusar(p, largura, "PNG", ip)
     base = p.get("nome") if isinstance(p.get("nome"), str) and p.get("nome") else str(p.get("fonte") or "rede")
     base = re.sub(r"[^a-zA-Z0-9_-]+", "-", base).strip("-")[:40] or "rede"
-    nome = f"{base}{'' if c.circulo else '_sem_circulo'}_s{c.seed}_{largura}x{largura * 9 // 16}.png"
+    w, h = dimensoes(largura, c.retrato)  # `largura` é o lado maior (a altura, no retrato)
+    nome = f"{base}{'' if c.circulo else '_sem_circulo'}{'_retrato' if c.retrato else ''}_s{c.seed}_{w}x{h}.png"
     if cfg.modo_local and cfg.salvar_exports_em:  # só no app local (app.py), nunca no servidor
         os.makedirs(cfg.salvar_exports_em, exist_ok=True)
         with open(os.path.join(cfg.salvar_exports_em, nome), "wb") as f:
@@ -438,7 +439,7 @@ async def exportar(req: Request):
     if recompensas:
         # o token só vale para quem exportou (mesmo IPv4 ou mesmo /48)
         headers["X-Token-Resgate"] = recompensas.emitir_token(antiabuso.hash_cota(cfg.ip_salt, ip))
-    evento("exportacao", largura=largura, fonte=str(p.get("fonte"))[:20], circulo=c.circulo,
+    evento("exportacao", largura=largura, retrato=c.retrato, fonte=str(p.get("fonte"))[:20], circulo=c.circulo,
            bytes=len(png), token_emitido=bool(recompensas), ip=antiabuso.hash_ip(cfg.ip_salt, ip)[:12])
     return Response(png, media_type="image/png", headers=headers)
 
