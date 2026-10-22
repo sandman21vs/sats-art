@@ -14,15 +14,16 @@ Os pagamentos passam por uma conta [Coinos](https://coinos.io) dedicada.
 
 1. **Conta Coinos só para o pote.** Crie uma conta nova em coinos.io e guarde nela só o que aceita perder.
 2. **Token da API.** Em coinos.io, nas configurações da conta, copie o token de autenticação (auth token).
-3. **Configuração:**
+3. **Configuração:** rode o assistente, que cria o `.env` a partir do `.env.example`:
    ```bash
-   cp .env.example .env
+   ./configurar.sh
    ```
-   Preencha:
+   No menu, use **3** para gerar `POW_HMAC_KEY`, `IP_SALT` e `PROXY_SECRET` (obrigatórios com recompensas ligadas: sem eles o servidor não inicia) e **2** para preencher:
    - `COINOS_TOKEN`: o token do passo 2.
    - `DONATION_LN_ADDRESS`: o endereço Lightning da conta, por exemplo `seuusuario@coinos.io`.
    - `PUBLIC_URL`: o endereço público do site.
-   - `POW_HMAC_KEY`, `IP_SALT` e `PROXY_SECRET`: gere cada um com `openssl rand -hex 32`. São obrigatórios com recompensas ligadas: sem eles o servidor não inicia.
+
+   Se preferir editar à mão: `cp .env.example .env` e gere cada segredo com `openssl rand -hex 32`.
 4. **Suba o serviço:**
    ```bash
    mkdir -p data && sudo chown 1000:1000 data   # só no Linux: o container roda como usuário 1000
@@ -88,6 +89,21 @@ Os pagamentos passam por uma conta [Coinos](https://coinos.io) dedicada.
 
 Os dados (resgates, doações e controle de abuso) ficam em `./data/app.db`. Para atualizar: `git pull && docker compose up -d --build`.
 
+### Mudar a configuração depois
+
+O `configurar.sh` muda o `.env` sem abrir o arquivo:
+```bash
+./configurar.sh                        # menu
+./configurar.sh ver                    # mostra tudo, com os segredos mascarados
+./configurar.sh mudar DAILY_GLOBAL_SATS
+./configurar.sh telegram               # liga o botão "Reportar problema"
+./configurar.sh aplicar                # confere e reinicia o site
+```
+- mostra a explicação de cada variável (a mesma do `.env.example`) e recusa valores no formato errado;
+- segredos não aparecem na tela, nem quando você digita;
+- antes de mudar, guarda uma cópia em `.env.bak-configurar-<data>` (ficam as 5 últimas);
+- antes de reiniciar, confere as regras que impedem o servidor de iniciar (ex.: `TRUST_PROXY=1` sem `PROXY_SECRET`).
+
 ### Como as recompensas funcionam
 
 - **Resgate:** cada exportação gera um token de uso único, válido por 30 minutos. Para resgatar, a pessoa informa o endereço Lightning e o navegador resolve uma prova de trabalho anti-robô de alguns segundos.
@@ -124,14 +140,10 @@ Com `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`, a página mostra um bot
 O IP cru nunca vai para o Telegram, e o texto do relato nunca vai para o log. Os limites são 3 relatos a cada 10 minutos por pessoa e `REPORTS_PER_HOUR` (padrão 30) no site todo.
 
 Para configurar:
-1. No Telegram, fale com o [@BotFather](https://t.me/BotFather), mande `/newbot` e copie o token que ele devolve para `TELEGRAM_BOT_TOKEN`.
-2. Abra a conversa com o seu bot novo e mande qualquer mensagem (o bot só consegue escrever para quem falou com ele antes).
-3. Descubra o seu chat id e coloque em `TELEGRAM_CHAT_ID`:
-   ```bash
-   curl -s "https://api.telegram.org/bot$(grep ^TELEGRAM_BOT_TOKEN= .env | cut -d= -f2-)/getUpdates" | grep -o '"chat":{"id":-\?[0-9]*'
-   ```
-   Para receber num grupo, adicione o bot ao grupo, mande uma mensagem lá e use o id do grupo (começa com `-`).
-4. `docker compose up -d`. Se o envio falhar, o log mostra o evento `report_falhou` com o motivo (ex.: `status 401` = token errado, `status 400` = chat id errado ou você não falou com o bot).
+1. No Telegram, fale com o [@BotFather](https://t.me/BotFather), mande `/newbot` e guarde o token que ele devolve.
+2. Abra a conversa com o seu bot novo e mande `/start` (o bot só consegue escrever para quem falou com ele antes). Para receber num grupo, adicione o bot ao grupo e mande uma mensagem lá.
+3. Rode `./configurar.sh telegram`. Ele pede o token, lista as conversas que o bot conhece para você escolher o chat id, manda uma mensagem de teste e só grava no `.env` se ela chegar. Se o grupo virou supergrupo, use o id que começa com `-100`.
+4. Responda **S** para reiniciar o site. Se o envio falhar, o log mostra o evento `report_falhou` com o motivo (ex.: `status 401` = token errado, `status 400` = chat id errado ou você não falou com o bot).
 
 ### Registro de eventos
 

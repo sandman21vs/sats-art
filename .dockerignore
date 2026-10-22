@@ -6,6 +6,7 @@ experimentos/
 tests/
 .claude/
 .env
+.env.bak*
 **/__pycache__/
 *.pyc
 .DS_Store
