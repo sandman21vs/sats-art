@@ -5,3 +5,4 @@ fastapi==0.156.2
 uvicorn==0.54.0
 httpx==0.28.1
 qrcode==8.2
+imageio-ffmpeg==0.6.0
