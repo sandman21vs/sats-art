@@ -43,7 +43,16 @@ const fmt = (v, step) => (step < 1 ? Number(v).toFixed(step < 0.1 ? 2 : 1) : Str
 const num = (n) => Number(n).toLocaleString("pt-BR");
 // JSON com Content-Type explícito: o servidor recusa POST sem ele (proteção contra CSRF)
 const postJSON = (url, corpo) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
-const mensagem = (el, texto, tipo = "") => { el.className = "msg " + tipo; el.textContent = texto; };
+// o último erro mostrado vai junto, se a pessoa reportar um problema
+let ultimoErro = "";
+const mensagem = (el, texto, tipo = "") => {
+  el.className = "msg " + tipo; el.textContent = texto;
+  if (tipo === "erro" && texto) ultimoErro = String(texto);
+};
+const erroNoStatus = (texto) => {
+  $("status").className = "status erro"; $("status").textContent = texto;
+  if (texto) ultimoErro = String(texto);
+};
 const enderecoValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.replace(/^lightning:/i, ""));
 // sem pagamentos externos liberados no servidor, só endereços @coinos.io recebem
 const enderecoAceito = (e) => enderecoValido(e) && (INFO.pagamento_externo || /@coinos\.io$/i.test(e.trim()));
@@ -111,7 +120,7 @@ async function renderizar() {
     st.className = "status"; st.textContent = `Pronto em ${((performance.now() - t0) / 1000).toFixed(1)} s`;
     primeiraPrevia = false;
   } catch (e) {
-    st.className = "status erro"; st.textContent = e.message;
+    erroNoStatus(e.message);
   }
   ocupado = false;
   if (pendente) { pendente = false; renderizar(); }
@@ -129,7 +138,7 @@ async function carregarImagem(blob) {
   if (!blob || !blob.type.startsWith("image/")) return;
   const r = await fetch("/api/imagem", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
   const j = await r.json();
-  if (!r.ok) { $("status").className = "status erro"; $("status").textContent = j.erro; return; }
+  if (!r.ok) { erroNoStatus(j.erro); return; }
   $("thumb").src = URL.createObjectURL(blob); $("thumb").hidden = false;
   $("dropTxt").textContent = "Trocar imagem: arraste, cole ou clique";
   estado.imagem_id = j.id;
@@ -142,7 +151,7 @@ async function atualizarForma() {
   if (estado.fonte !== "imagem") return;
   const r = await postJSON("/api/forma", estado);
   if (r.ok) $("shape").src = URL.createObjectURL(await r.blob());
-  else { $("status").className = "status erro"; $("status").textContent = (await r.json()).erro; }
+  else erroNoStatus((await r.json()).erro);
 }
 
 const drop = $("drop");
@@ -186,6 +195,7 @@ async function carregarInfo() {
   sel.value = atual && [...sel.options].some((o) => o.value === atual) ? atual : sel.options[sel.options.length - 1].value;
 
   configurarLinks();
+  configurarReport();
   $("blocoGanhe").hidden = !INFO.recompensas;
   $("blocoEndereco").hidden = !INFO.recompensas;
   $("blocoApoie").hidden = INFO.recompensas || !INFO.doacao_endereco;
@@ -490,6 +500,56 @@ function configurarLinks() {
 $("abrirBounty").addEventListener("click", () => abrir("modalBounty"));
 $("abrirBounty2").addEventListener("click", () => abrir("modalBounty"));
 $("abrirBounty3").addEventListener("click", () => abrir("modalBounty"));
+
+// ---------- reportar problema ----------
+function configurarReport() {
+  const tipos = INFO.report_tipos || [];
+  for (const id of ["abrirReport", "abrirReport2", "reportCartao"]) $(id).hidden = !tipos.length;
+  const box = $("reportTipos");
+  if (box.dataset.tipos === JSON.stringify(tipos)) return;  // mantém o que a pessoa já marcou
+  box.dataset.tipos = JSON.stringify(tipos);
+  box.innerHTML = "";
+  for (const [chave, rotulo] of tipos) {
+    const b = Object.assign(document.createElement("button"), { textContent: rotulo, type: "button" });
+    b.dataset.tipo = chave;
+    b.addEventListener("click", () => b.classList.toggle("on"));
+    box.append(b);
+  }
+}
+function abrirReport() {
+  $("reportErro").hidden = !ultimoErro;
+  $("reportErro").textContent = ultimoErro ? `Vamos mandar junto o último erro que apareceu: "${ultimoErro}"` : "";
+  mensagem($("msgReport"), "");
+  $("enviarReport").disabled = false;
+  abrir("modalReport");
+}
+for (const id of ["abrirReport", "abrirReport2", "abrirReport3"]) $(id).addEventListener("click", abrirReport);
+$("enviarReport").addEventListener("click", async () => {
+  const tipos = [...$("reportTipos").querySelectorAll("button.on")].map((b) => b.dataset.tipo);
+  const texto = $("reportTexto").value.trim();
+  if (!tipos.length && !texto) {
+    $("msgReport").className = "msg erro"; $("msgReport").textContent = "Marque o que aconteceu ou escreva uma mensagem.";
+    return;
+  }
+  const b = $("enviarReport");
+  b.disabled = true;
+  mensagem($("msgReport"), "Enviando…");
+  try {
+    const r = await postJSON("/api/reportar", {
+      tipos, mensagem: texto, contato: $("reportContato").value.trim(), erro: ultimoErro,
+      retrato: estado.retrato, tela: `${innerWidth}x${innerHeight}`,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.erro || "Não consegui enviar agora. Tente de novo.");
+    $("reportTexto").value = "";
+    $("reportTipos").querySelectorAll("button.on").forEach((x) => x.classList.remove("on"));
+    mensagem($("msgReport"), "Recebido, obrigado! 🙏 Vamos olhar o quanto antes.", "sucesso");
+  } catch (e) {
+    // o erro do próprio envio não deve virar o "último erro" do próximo relato
+    $("msgReport").className = "msg erro"; $("msgReport").textContent = e.message;
+    b.disabled = false;
+  }
+});
 
 // ---------- modais ----------
 function abrir(id) { $(id).hidden = false; }

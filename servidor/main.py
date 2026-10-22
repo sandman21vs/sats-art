@@ -27,6 +27,7 @@ from .db import DB
 from .lnurl import LnurlErro
 from .recompensas import Recompensas, ResgateErro
 from .render import Excesso, ImagemInvalida, Ocupado, ParametroInvalido, Renderizador, dimensoes
+from .telegram import Telegram, TelegramErro
 
 log = logging.getLogger("servidor")
 
@@ -54,6 +55,7 @@ render = Renderizador(cfg.render_workers, cfg.max_fila)
 db = DB(os.path.join(cfg.data_dir, "app.db"))
 coinos = Coinos(cfg.coinos_token, cfg.coinos_url) if cfg.recompensas_ativas else None
 recompensas = Recompensas(cfg, db, coinos) if coinos else None
+telegram = Telegram(cfg.telegram_token, cfg.telegram_chat_id) if cfg.reports_ativos else None
 lim_export = antiabuso.Limitador(cfg.exports_por_10min, 600)
 lim_preview = antiabuso.Limitador(40, 60)
 lim_upload = antiabuso.Limitador(30, 600)
@@ -65,6 +67,9 @@ lim_status_global = antiabuso.Limitador(1200, 60)     # o navegador do doador co
 lim_info = antiabuso.Limitador(60, 60)                # /api/info sai de um cache: sem limite global
 lim_desafio = antiabuso.Limitador(30, 60)             # desafio é só um HMAC: sem limite global
 lim_meu_dia = antiabuso.Limitador(60, 60)
+lim_report = antiabuso.Limitador(3, 600)
+# cada relato vira uma mensagem no Telegram do dono: o teto global segura quem troca de IP
+lim_report_global = antiabuso.Limitador(cfg.reports_por_hora, 3600)
 # Só conta resgates que já passaram por token válido (do próprio IP) e prova de trabalho:
 # bloquear todo mundo exigiria centenas de exportações legítimas.
 lim_resgate_global = antiabuso.Limitador(300, 600)
@@ -116,6 +121,8 @@ async def ciclo(_app):
     tarefa.cancel()
     if coinos:
         await coinos.fechar()
+    if telegram:
+        await telegram.fechar()
     evento("servidor_encerrado")
 
 
@@ -335,10 +342,13 @@ def pagina_com_versao():
     Proxies como o Cloudflare podem trocar o Cache-Control do app.js por horas de cache
     no navegador; sem a versão, quem voltasse ao site depois de uma atualização ficaria
     com o JavaScript antigo e a página nova, e o site travaria em "Carregando…"."""
-    with open(os.path.join(STATIC, "app.js"), "rb") as f:
-        versao = hashlib.sha256(f.read()).hexdigest()[:12]
     with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
-        return f.read().replace('src="/app.js"', f'src="/app.js?v={versao}"')
+        return f.read().replace('src="/app.js"', f'src="/app.js?v={versao_app()}"')
+
+
+def versao_app():
+    with open(os.path.join(STATIC, "app.js"), "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()[:12]
 
 
 @app.get("/")
@@ -373,6 +383,7 @@ async def info(req: Request):
         "doacao_endereco": cfg.doacao_endereco,
         "doacao_qr": qr_svg(f"lightning:{cfg.doacao_endereco}") if cfg.doacao_endereco else None,
         "pote": None,
+        "report_tipos": list(TIPOS_REPORT.items()) if telegram else [],
     }
     if recompensas:
         with suppress(CoinosErro):
@@ -522,3 +533,83 @@ async def doacao_status(hash_: str, req: Request):
     except CoinosErro as e:
         raise Recusado(502, "Não consegui consultar agora.") from e
 
+
+
+# ---------- reportar problema ----------
+# As opções prontas ficam aqui (a página recebe a lista em /api/info): o visitante só escolhe
+# chaves, nunca manda o texto dos rótulos.
+TIPOS_REPORT = {
+    "sats_nao_chegaram": "Não recebi os sats",
+    "erro_resgate": "Deu erro ao resgatar",
+    "arte_travou": "A arte não gera ou travou",
+    "imagem": "Minha imagem não funcionou",
+    "compartilhar": "Compartilhar não funciona",
+    "lento": "Site lento ou fora do ar",
+    "outro": "Outra coisa",
+}
+MAX_REPORT_TEXTO, MAX_REPORT_CONTATO, MAX_REPORT_ERRO = 1000, 120, 300
+_CONTROLE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
+
+
+def _texto_report(valor, limite, linhas=True):
+    """Texto livre do visitante: só string, sem caracteres de controle (nem de inverter a
+    direção do texto), sem linhas em branco em excesso e cortado no limite."""
+    if valor is None:
+        return ""
+    if not isinstance(valor, str):
+        raise Recusado(400, "Pedido inválido.")
+    t = _CONTROLE.sub("", valor.replace("\r\n", "\n").replace("\r", "\n"))
+    t = re.sub(r"\n{3,}", "\n\n", t) if linhas else " ".join(t.split())
+    return t.strip()[:limite]
+
+
+@app.post("/api/reportar")
+async def reportar(req: Request):
+    if not telegram:
+        raise HTTPException(404, "Relatos desligados neste servidor.")
+    ip = ip_de(req)
+    limitar(lim_report, ip, "Você já mandou alguns relatos agora. Espere uns minutos.")
+    p = await ler_json(req)
+    tipos = p.get("tipos") or []
+    if (not isinstance(tipos, list) or len(tipos) > len(TIPOS_REPORT)
+            or any(not isinstance(t, str) or t not in TIPOS_REPORT for t in tipos)):
+        raise Recusado(400, "Pedido inválido.")
+    tipos = list(dict.fromkeys(tipos))
+    texto = _texto_report(p.get("mensagem"), MAX_REPORT_TEXTO)
+    contato = _texto_report(p.get("contato"), MAX_REPORT_CONTATO, linhas=False)
+    ultimo_erro = _texto_report(p.get("erro"), MAX_REPORT_ERRO, linhas=False)
+    tela = _texto_report(p.get("tela"), 20, linhas=False)
+    if not tipos and not texto:
+        raise Recusado(400, "Marque o que aconteceu ou escreva uma mensagem.")
+    limitar(lim_report_global, "todos", "Muitos relatos agora. Tente de novo mais tarde.")
+
+    pessoa = antiabuso.hash_ip(cfg.ip_salt, ip)[:12]  # o mesmo hash dos eventos do log
+    partes = ["🐞 Relato de problema · Rede de Nós"]
+    if tipos:
+        partes.append("\n".join("• " + TIPOS_REPORT[t] for t in tipos))
+    if texto:
+        partes.append("💬 " + texto)
+    if contato:
+        partes.append("📮 Contato: " + contato)
+    if ultimo_erro:
+        partes.append("⚠️ Último erro na tela: " + ultimo_erro)
+    contexto = [f"Pessoa (hash do IP nos logs): {pessoa}"]
+    if recompensas:
+        dia = recompensas.meu_dia("", antiabuso.hash_cota(cfg.ip_salt, ip))
+        contexto.append(f"Hoje: {dia['feitos']} resgate(s), {dia['ganho_hoje']} de {cfg.limite_dia_usuario} sats")
+        with suppress(CoinosErro):
+            contexto.append(f"Pote: {await recompensas.saldo()} sats (reserva {cfg.reserva_pote})")
+    formato = "em pé" if p.get("retrato") is True else "deitada"
+    contexto.append(f"Arte: {formato}" + (f" · tela {tela}" if tela else ""))
+    contexto.append("Navegador: " + _texto_report(req.headers.get("user-agent"), 160, linhas=False))
+    contexto.append(f"Versão do app: {versao_app()} · {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC")
+    partes.append("\n".join(contexto))
+
+    try:
+        await telegram.enviar("\n\n".join(partes))
+    except TelegramErro as e:
+        evento("report_falhou", "error", motivo=str(e), ip=pessoa)
+        raise Recusado(502, "Não consegui enviar agora. Tente de novo em alguns minutos.") from e
+    # o texto do relato vai só para o Telegram, nunca para o log (pode ter endereço, e-mail...)
+    evento("report_enviado", tipos=tipos, caracteres=len(texto), contato=bool(contato), ip=pessoa)
+    return {"ok": True}

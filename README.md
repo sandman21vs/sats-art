@@ -113,6 +113,26 @@ Sem `COINOS_TOKEN`, o app roda só como gerador, sem recompensas e sem doações
 
 A página tem um botão **🐞 Bug bounty** e o arquivo [SECURITY.md](SECURITY.md) traz as regras: quem conseguir esvaziar o pote fica com `BOUNTY_PERCENT` (padrão 70%) do que pegou e relata a falha para `BOUNTY_EMAIL`. O ícone do GitHub no topo aponta para `REPO_URL`. Enquanto ela estiver vazia, o ícone aparece como "em breve".
 
+### Reportar problema
+
+Com `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`, a página mostra um botão **🛟 Reportar problema**. A pessoa marca opções prontas ("Não recebi os sats", "Deu erro ao resgatar"...), escreve se quiser e pode deixar um contato. O relato chega como mensagem de um bot no seu Telegram, junto com:
+- o último erro que apareceu na tela dela;
+- quantos sats ela já ganhou hoje e o saldo do pote;
+- formato da arte, tamanho da tela, navegador e versão do app;
+- o hash do IP, o mesmo dos eventos do log, para achar o que aconteceu com ela: `grep '<hash>' data/logs/eventos.jsonl`.
+
+O IP cru nunca vai para o Telegram, e o texto do relato nunca vai para o log. Os limites são 3 relatos a cada 10 minutos por pessoa e `REPORTS_PER_HOUR` (padrão 30) no site todo.
+
+Para configurar:
+1. No Telegram, fale com o [@BotFather](https://t.me/BotFather), mande `/newbot` e copie o token que ele devolve para `TELEGRAM_BOT_TOKEN`.
+2. Abra a conversa com o seu bot novo e mande qualquer mensagem (o bot só consegue escrever para quem falou com ele antes).
+3. Descubra o seu chat id e coloque em `TELEGRAM_CHAT_ID`:
+   ```bash
+   curl -s "https://api.telegram.org/bot$(grep ^TELEGRAM_BOT_TOKEN= .env | cut -d= -f2-)/getUpdates" | grep -o '"chat":{"id":-\?[0-9]*'
+   ```
+   Para receber num grupo, adicione o bot ao grupo, mande uma mensagem lá e use o id do grupo (começa com `-`).
+4. `docker compose up -d`. Se o envio falhar, o log mostra o evento `report_falhou` com o motivo (ex.: `status 401` = token errado, `status 400` = chat id errado ou você não falou com o bot).
+
 ### Registro de eventos
 
 Tudo que acontece no sistema vira uma linha JSON, na saída padrão (`docker compose logs`, limitada a 5 x 20 MB pelo `docker-compose.yml`) e em `data/logs/eventos.jsonl`, com rotação diária e a cada 20 MB; arquivos com mais de `RETENTION_DAYS` dias são apagados. Os eventos de cada pedido têm teto de 10 linhas por segundo (os descartados são contados no campo `suprimidos`), para um flood não encher o disco.
@@ -175,6 +195,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
   - `render.py`: fila de renderização.
   - `recompensas.py`: regras de resgate.
   - `coinos.py`: cliente da API da Coinos.
+  - `telegram.py`: envio dos relatos de problema para o Telegram.
   - `lnurl.py`: pagamento para endereço Lightning.
   - `antiabuso.py`: prova de trabalho e limites.
   - `db.py`: SQLite.

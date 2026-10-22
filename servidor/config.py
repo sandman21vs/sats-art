@@ -58,6 +58,10 @@ class Config:
     bounty_email: str = field(default_factory=lambda: os.environ.get(
         "BOUNTY_EMAIL", "sandmann@sandlabs.store").strip())
     bounty_percentual: int = field(default_factory=lambda: _int("BOUNTY_PERCENT", 70))
+    # botão "Reportar problema": os relatos chegam por um bot do Telegram (vazio = botão escondido)
+    telegram_token: str = field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", "").strip())
+    telegram_chat_id: str = field(default_factory=lambda: os.environ.get("TELEGRAM_CHAT_ID", "").strip())
+    reports_por_hora: int = field(default_factory=lambda: _int("REPORTS_PER_HOUR", 30))
 
     data_dir: str = field(default_factory=lambda: os.environ.get("DATA_DIR", "/data"))
     # modo local (app.py no seu computador): só nele as exportações são gravadas em disco
@@ -71,6 +75,10 @@ class Config:
     @property
     def recompensas_ativas(self):
         return bool(self.coinos_token)
+
+    @property
+    def reports_ativos(self):
+        return bool(self.telegram_token and self.telegram_chat_id)
 
     def validar(self):
         """Recusa iniciar com configuração insegura (a maioria das regras vale com recompensas)."""
