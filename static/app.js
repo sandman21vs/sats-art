@@ -387,6 +387,7 @@ $("exportar").addEventListener("click", async () => {
     ultimoArquivo = new File([await r.blob()], nome, { type: "image/png" });
     ultimoToken = r.headers.get("X-Token-Resgate");
     baixar(ultimoArquivo);
+    document.dispatchEvent(new CustomEvent("arte-baixada"));  // galeria.js: opt-in da galeria
     mensagem(msg, "");
     $("cartao").hidden = false;
     marcar($("resultado"), "res.baixada");
@@ -502,7 +503,7 @@ async function provaDeTrabalho() {
 // ---------- compartilhar ----------
 // Convite com os dois jeitos de "jogar": criar e ganhar sats, ou atacar o site e roubar o pote.
 function convite(site) {
-  if (!INFO.recompensas) return t(ultimoArquivo ? "conv.sem_pote_arte" : "conv.sem_pote", { site });
+  if (!INFO.recompensas) return t(ultimoArquivo || site !== location.origin ? "conv.sem_pote_arte" : "conv.sem_pote", { site });
   const pote = INFO.pote == null ? "" : t("conv.pote", { n: num(INFO.pote) });
   return [
     t(ultimoArquivo ? "conv.l1_arte" : "conv.l1"),
@@ -519,7 +520,8 @@ function convite(site) {
 // - no celular, "Compartilhar com a arte" usa o compartilhamento do sistema, que leva a imagem;
 // - no computador, clicar numa rede copia a arte para a área de transferência: é só colar no post.
 // A arte é a exportada ou, antes de exportar, a prévia que está na tela.
-const siteAtual = () => location.origin;  // o endereço que a pessoa está vendo (PUBLIC_URL pode estar errado)
+// o link da arte (galeria.js), se houver; senão o endereço que a pessoa está vendo (PUBLIC_URL pode estar errado)
+const siteAtual = () => (typeof linkAtual === "function" && linkAtual()) || location.origin;
 let arteConvite = null;  // { jpg: File, png: Blob, url }
 
 async function prepararArte() {
@@ -767,5 +769,6 @@ document.querySelectorAll("[data-idioma]").forEach((b) => b.addEventListener("cl
 // ---------- início ----------
 definirIdioma(idioma);
 sincronizar();
-carregarInfo().then(() => { if (!guardado("viu-tutorial", false)) abrir("tutorial"); });
-renderizar();
+const abriuArte = location.pathname.startsWith("/a/");  // link de uma arte: galeria.js carrega e desenha
+carregarInfo().then(() => { if (!guardado("viu-tutorial", false) && !abriuArte) abrir("tutorial"); });
+if (!abriuArte) renderizar();

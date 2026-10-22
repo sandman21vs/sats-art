@@ -169,6 +169,21 @@ MENSAGENS = {
         "That Lightning address doesn't exist or doesn't accept payments.", "Diese Lightning-Adresse existiert nicht oder nimmt keine Zahlungen an."),
     "A carteira desse endereço demorou demais para responder.": (
         "The wallet behind that address took too long to respond.", "Die Wallet hinter dieser Adresse hat zu lange nicht geantwortet."),
+    # servidor/galeria.py (link da arte e galeria)
+    "Essa arte não existe mais.": ("This artwork doesn't exist anymore.", "Dieses Kunstwerk gibt es nicht mehr."),
+    "Muitos links criados. Espere um pouco.": ("Too many links created. Wait a bit.", "Zu viele Links erstellt. Warte kurz."),
+    "Muitos links criados agora. Tente de novo em alguns minutos.": (
+        "Too many links being created right now. Try again in a few minutes.",
+        "Gerade werden zu viele Links erstellt. Versuch es in ein paar Minuten noch einmal."),
+    "O espaço para links está cheio agora. Tente mais tarde.": (
+        "Link storage is full right now. Try again later.", "Der Speicher für Links ist gerade voll. Versuch es später noch einmal."),
+    "Você já mandou várias denúncias. Espere um pouco.": (
+        "You've already sent several reports. Wait a bit.", "Du hast schon mehrere Meldungen geschickt. Warte kurz."),
+    "Muitas denúncias agora. Tente de novo mais tarde.": (
+        "Too many reports right now. Try again later.", "Gerade gibt es zu viele Meldungen. Versuch es später noch einmal."),
+    "Entre com o token de admin.": ("Sign in with the admin token.", "Melde dich mit dem Admin-Token an."),
+    "Token errado.": ("Wrong token.", "Falscher Token."),
+    "Muitas tentativas. Espere alguns minutos.": ("Too many attempts. Wait a few minutes.", "Zu viele Versuche. Warte ein paar Minuten."),
 }
 
 # mensagens com valores no meio: (regex em português, modelo em inglês, modelo em alemão)
