@@ -49,6 +49,8 @@ class Config:
     cor: str = "#ff6600"
     brilho: float = 1.0
     fundo: float = 1.0
+    multicor: bool = False      # cada parte da logo acende os nós em volta com a sua cor
+    cores_arte: tuple = ()      # cor de cada parte (None = segue `cor`); veja campo_de_cores
 
     def chave_rede(self):
         return (self.angulo, self.seed, self.circulo, self.tamanho, self.raio,
@@ -242,8 +244,64 @@ def dimensoes(lado, retrato=False):
     return (curto, lado) if retrato else (lado, curto)
 
 
-def pintar(rede: Rede, cfg: Config, lado=REF_W) -> Image.Image:
-    """`lado` = lado MAIOR da imagem, em px (a largura no paisagem, a altura no retrato)."""
+PASSO_CAMPO = 6     # unidades por célula do campo de cores
+AMOSTRAS_CAMPO = 3  # subamostras por lado em cada célula (pega traços finos da logo)
+
+
+def _caixa(a, r, eixo):
+    """Média móvel de raio r (em células) ao longo de um eixo, com bordas em zero."""
+    if r < 1:
+        return a
+    a = np.moveaxis(a, eixo, -1)
+    c = np.cumsum(np.pad(a, [(0, 0)] * (a.ndim - 1) + [(r + 1, r)]), axis=-1)
+    return np.moveaxis((c[..., 2 * r + 1:] - c[..., :-2 * r - 1]) / (2 * r + 1), -1, eixo)
+
+
+def _borrar(a, raio):
+    """Quase gaussiana: três médias móveis em cada eixo (custo não depende do raio)."""
+    r = max(1, int(round(raio / 3)))
+    for _ in range(3):
+        a = _caixa(_caixa(a, r, 0), r, 1)
+    return a
+
+
+def campo_de_cores(rede: Rede, cfg: Config, rotulos_na_tela, cores):
+    """Cor da rede em cada ponto da tela (baixa resolução, uint8 RGB): cada parte da logo pinta
+    os nós em volta dela com a sua cor, e as cores se misturam suavemente entre as partes.
+
+    rotulos_na_tela(xs, ys) -> índice da parte da logo em cada ponto (em unidades do motor;
+    255 = fora do símbolo). cores: [(r, g, b)] por índice. Perto do símbolo vale a parte mais
+    próxima; longe, cada vez mais a mistura das partes em escalas maiores."""
+    gw, gh = math.ceil(rede.W / PASSO_CAMPO), math.ceil(rede.H / PASSO_CAMPO)
+    k = AMOSTRAS_CAMPO
+    sub = (np.arange(k) + 0.5) / k
+    xs = ((np.arange(gw)[:, None] + sub[None]).reshape(-1) * PASSO_CAMPO)[None, :]
+    ys = ((np.arange(gh)[:, None] + sub[None]).reshape(-1) * PASSO_CAMPO)[:, None]
+    rot = rotulos_na_tela(np.broadcast_to(xs, (gh * k, gw * k)), np.broadcast_to(ys, (gh * k, gw * k)))
+    n = len(cores)
+    if n == 0:
+        return None
+    pesos = []
+    for i in range(n):
+        cobre = (rot == i).reshape(gh, k, gw, k).mean((1, 3))  # fração da célula nesta parte
+        if not cobre.any():
+            pesos.append(None)
+            continue
+        area = cobre.sum()
+        # escalas de 30, 120 e 480 unidades: a menor manda onde alcança, as outras completam
+        pesos.append(_borrar(cobre, 30 / PASSO_CAMPO) + 1e-3 * _borrar(cobre, 120 / PASSO_CAMPO)
+                     + 1e-6 * _borrar(cobre, 480 / PASSO_CAMPO) + 1e-12 * area)
+    usados = [i for i in range(n) if pesos[i] is not None]
+    if not usados:
+        return None
+    total = sum(pesos[i] for i in usados)
+    rgb = sum(pesos[i][..., None] * np.array(cores[i], np.float64) for i in usados) / total[..., None]
+    return np.clip(np.round(rgb), 0, 255).astype(np.uint8)
+
+
+def pintar(rede: Rede, cfg: Config, lado=REF_W, campo=None) -> Image.Image:
+    """`lado` = lado MAIOR da imagem, em px (a largura no paisagem, a altura no retrato).
+    `campo` (de campo_de_cores) troca a cor única `cfg.cor` por uma cor em cada ponto."""
     out_w, out_h = dimensoes(lado, cfg.retrato)
     U = cfg.zoom * (lado / REF_W)  # px de saída por unidade (igual nos dois formatos)
     S = U * SS                     # px de desenho por unidade
@@ -307,9 +365,17 @@ def pintar(rede: Rede, cfg: Config, lado=REF_W) -> Image.Image:
 
     b = cfg.brilho
     out = np.empty((out_h, out_w, 3), np.uint8)
+    if campo is not None:  # a cor muda de ponto a ponto: HOT = 3/4 da cor + 1/4 de branco quente
+        campo = Image.fromarray(campo, "RGB").resize((out_w, out_h), Image.BILINEAR)
+        tinta = Lc * 1.5 + G1 * 1.65 + G2 * 1.6 + GH * 1.8
     for c in range(3):
-        light = (Lc * 1.5 * ORANGE[c] + Dc * 1.1 * CORE[c] + G1 * 2.2 * HOT[c]
-                 + G2 * 1.6 * ORANGE[c] + GH * 1.8 * ORANGE[c]) * b
+        if campo is not None:
+            cor = np.asarray(campo.getchannel(c), np.float32)
+            light = (tinta * cor + Dc * 1.1 * CORE[c] + G1 * 0.55 * (255, 235, 160)[c]) * b
+            del cor
+        else:
+            light = (Lc * 1.5 * ORANGE[c] + Dc * 1.1 * CORE[c] + G1 * 2.2 * HOT[c]
+                     + G2 * 1.6 * ORANGE[c] + GH * 1.8 * ORANGE[c]) * b
         bg = ((13, 12, 12)[c] + (11, 6, 3)[c] * glow) * cfg.fundo
         ch = bg + 255 * (1 - np.exp(-light / 255 * 1.4)) + grain
         out[..., c] = np.clip(ch, 0, 255).astype(np.uint8)

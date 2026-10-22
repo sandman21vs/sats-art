@@ -3,16 +3,19 @@ import asyncio
 import hashlib
 import io
 import math
+import re
 import threading
 import time
 from collections import OrderedDict, deque
 from dataclasses import fields
 
+import numpy as np
 from PIL import Image, ImageDraw
-from shapely.affinity import scale, translate
+from shapely.affinity import affine_transform, scale, translate
 
-from motor.forma_imagem import ImagemInvalida, forma_normalizada, holes_de_forma, reduzir
-from motor.rede_nos import Config, construir_rede, dimensoes, pintar
+from motor.forma_imagem import (MAX_CORES, ImagemInvalida, analisar, forma_normalizada, holes_de_forma,
+                                mascara, reduzir, regioes_na_tela)
+from motor.rede_nos import Config, campo_de_cores, construir_rede, dimensoes, pintar
 from motor.simbolos import SIMBOLOS
 
 from .eventos import evento
@@ -106,6 +109,26 @@ class LRU(OrderedDict):
         return len(v) if self.max_bytes and isinstance(v, (bytes, bytearray)) else 0
 
 
+_HEX = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _cor(v, msg="Cor inválida."):
+    # regex, não int(v, 16): int aceita "-1ffff", " fffff" e "f_ffff", que quebrariam a pintura
+    if not (isinstance(v, str) and _HEX.fullmatch(v)):
+        raise ParametroInvalido(msg)
+    return v.lower()
+
+
+def _cores_off(v):
+    """Índices das cores da logo desligadas: lista curta de inteiros 0..MAX_CORES-1."""
+    if v is None:
+        return ()
+    if not isinstance(v, list) or len(v) > MAX_CORES or \
+            any(isinstance(i, bool) or not isinstance(i, int) or not 0 <= i < MAX_CORES for i in v):
+        raise ParametroInvalido("Ajuste de cores da imagem inválido.")
+    return tuple(sorted(set(v)))
+
+
 def _numero(nome, v):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise ParametroInvalido(f"Parâmetro {nome} inválido.")
@@ -119,7 +142,8 @@ def _numero(nome, v):
 class Renderizador:
     def __init__(self, workers=1, max_fila=8):
         self.imagens = LRU(500, max_bytes=64 * 1024 * 1024)  # id -> PNG reduzido (≤1024px)
-        self.formas = LRU(300)    # (id, limiar, inverter) -> forma normalizada
+        self.formas = LRU(300)    # (id, limiar, inverter, cores_off) -> (forma normalizada, Regioes)
+        self.analises = LRU(32)   # id -> Analise (≈2 MB cada: distância ao fundo e cor de cada pixel)
         self.redes = LRU(4)       # chave -> Rede
         self.sem = asyncio.Semaphore(workers)
         self.max_fila = workers + max_fila
@@ -134,6 +158,20 @@ class Renderizador:
         self.imagens.por(img_id, reduzida)
         return img_id
 
+    def analise(self, img_id, dados):
+        """Análise de cor da imagem (feita uma vez; refeita só se saiu do cache)."""
+        a = self.analises.pegar(img_id)
+        if a is None:
+            a = analisar(dados)
+            self.analises.por(img_id, a)
+        return a
+
+    def _guardar_e_analisar(self, dados):
+        """Upload: reduz, guarda e já analisa as cores (a página mostra os chips na hora)."""
+        img_id = self.guardar_imagem(dados)
+        reduzida = self.imagens.pegar(img_id)
+        return img_id, (self.analise(img_id, reduzida).cores() if reduzida is not None else [])
+
     @staticmethod
     def ler_config(p):
         if not isinstance(p, dict):
@@ -143,18 +181,16 @@ class Renderizador:
         for k, v in p.items():
             if k not in nomes:
                 continue
-            if k in ("circulo", "retrato"):
+            if k in ("circulo", "retrato", "multicor"):
                 if not isinstance(v, bool):
                     raise ParametroInvalido(f"Parâmetro {k} inválido.")
                 kw[k] = v
             elif k == "cor":
-                if not (isinstance(v, str) and len(v) == 7 and v[0] == "#"):
-                    raise ParametroInvalido("Cor inválida.")
-                try:
-                    int(v[1:], 16)
-                except ValueError as e:
-                    raise ParametroInvalido("Cor inválida.") from e
-                kw[k] = v
+                kw[k] = _cor(v)
+            elif k == "cores_arte":  # cor de cada parte da logo; null = segue a cor principal
+                if not isinstance(v, list) or len(v) > MAX_CORES:
+                    raise ParametroInvalido("Cores da arte inválidas.")
+                kw[k] = tuple(None if c is None else _cor(c, "Cores da arte inválidas.") for c in v)
             elif k == "seed":
                 if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v < 2 ** 31:
                     raise ParametroInvalido("Semente inválida.")
@@ -163,8 +199,9 @@ class Renderizador:
                 kw[k] = _numero(k, v)
         return Config(**kw)
 
-    def fonte_holes(self, p):
-        """Devolve (make_holes, chave, forma) para o símbolo pedido (forma só para imagens)."""
+    def fonte_holes(self, p, com_regioes=False):
+        """Devolve (make_holes, chave, forma) para o símbolo pedido (forma só para imagens).
+        Com `com_regioes`, acrescenta as Regioes (em que cor da logo cai cada ponto) e a Analise."""
         fonte = p.get("fonte", "sat")
         if fonte == "imagem":
             img_id = p.get("imagem_id")
@@ -175,35 +212,87 @@ class Renderizador:
             if isinstance(limiar, bool) or not isinstance(limiar, int) or not 1 <= limiar <= 254 \
                     or not isinstance(inverter, bool):
                 raise ParametroInvalido("Ajuste de imagem inválido.")
-            chave = (img_id, limiar, inverter)
-            forma = self.formas.pegar(chave)
-            if forma is None:
-                forma = forma_normalizada(dados, limiar, inverter)
-                self.formas.por(chave, forma)
+            cores_off = _cores_off(p.get("cores_off"))
+            chave = (img_id, limiar, inverter, cores_off)
+            par = self.formas.pegar(chave)
+            analise = None
+            if par is None or com_regioes:
+                analise = self.analise(img_id, dados)
+            if par is None:
+                par = forma_normalizada(analise, limiar, inverter, cores_off, com_regioes=True)
+                self.formas.por(chave, par)
+            forma, regioes = par
+            if com_regioes:
+                return holes_de_forma(forma), ("imagem",) + chave, forma, regioes, analise
             return holes_de_forma(forma), ("imagem",) + chave, forma
         if not isinstance(fonte, str) or fonte not in SIMBOLOS:
             raise ParametroInvalido("Símbolo desconhecido.")
+        if com_regioes:
+            return SIMBOLOS[fonte][0], (fonte,), None, None, None
         return SIMBOLOS[fonte][0], (fonte,), None
 
     # ---------- trabalho pesado (roda em thread, sempre pela fila) ----------
     def _gerar(self, p, largura):
         cfg = self.ler_config(p)
-        make_holes, chave_fonte, _ = self.fonte_holes(p)
+        multicor = cfg.multicor and p.get("fonte") == "imagem"
+        make_holes, chave_fonte, _, regioes, analise = (self.fonte_holes(p, com_regioes=True) if multicor
+                                                        else self.fonte_holes(p) + (None, None))
         chave = chave_fonte + cfg.chave_rede()
         rede = self.redes.pegar(chave)
         if rede is None:
             rede = construir_rede(make_holes, cfg)
             self.redes.por(chave, rede)
-        return pintar(rede, cfg, largura), cfg
+        campo = None
+        if multicor and regioes is not None:
+            campo = campo_de_cores(rede, cfg, lambda xs, ys: regioes_na_tela(
+                regioes, xs, ys, rede.CX, rede.CY, cfg.angulo, cfg.tamanho), self._cores_das_partes(cfg, analise))
+        return pintar(rede, cfg, largura, campo), cfg
+
+    @staticmethod
+    def _cores_das_partes(cfg, analise):
+        """Cor de brilho de cada parte da logo: a escolhida pela pessoa, senão a sugerida pela
+        análise, senão (cores neutras) a cor principal."""
+        cores = []
+        for i, sugerida in enumerate(c["arte"] for c in analise.cores()):
+            escolhida = cfg.cores_arte[i] if i < len(cfg.cores_arte) else sugerida
+            h = (escolhida or cfg.cor).lstrip("#")
+            cores.append(tuple(int(h[j:j + 2], 16) for j in (0, 2, 4)))
+        return cores
 
     def _miniatura(self, p):
-        """A forma detectada no print, em branco sobre preto."""
-        _, chave, g = self.fonte_holes(p)  # a forma vem junto: o cache pode tê-la descartado
+        """A forma detectada no print, em branco sobre preto. As partes de cores desligadas
+        aparecem apagadas, para a pessoa ver o que tirou."""
+        _, chave, g, regioes, analise = self.fonte_holes(p, com_regioes=True)
         if chave[0] != "imagem":
             raise ParametroInvalido("Só há forma detectada para imagens enviadas.")
         lado = 220
-        g = translate(scale(g, lado * 0.9, lado * 0.9, origin=(0, 0)), lado / 2, lado / 2)
-        im = Image.new("RGB", (lado, lado), (20, 20, 20))
+        cores_off = chave[4]
+        cheia = mascara(analise, chave[2]) if cores_off and not chave[3] else None
+        if cheia is not None and cheia.any():
+            # enquadra a logo inteira (com as partes tiradas), não só o que sobrou: em pixels da imagem
+            ys, xs = np.nonzero(cheia)
+            bx0, by0, bx1, by1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
+            s = lado * 0.9 / max(bx1 - bx0, by1 - by0)
+            ox, oy = lado / 2 - (bx0 + bx1) / 2 * s, lado / 2 - (by0 + by1) / 2 * s
+            fora = cheia & ~mascara(analise, chave[2], cores_off=cores_off)
+            k = np.arange(lado, dtype=np.float64) + 0.5
+            x = np.floor((k[None, :] - ox) / s).astype(np.int64).repeat(lado, 0)
+            y = np.floor((k[:, None] - oy) / s).astype(np.int64).repeat(lado, 1)
+            h, w = fora.shape
+            dentro = (x >= 0) & (x < w) & (y >= 0) & (y < h)
+            apagado = np.zeros((lado, lado), bool)
+            apagado[dentro] = fora[y[dentro], x[dentro]]
+            fundo = np.full((lado, lado, 3), 20, np.uint8)
+            fundo[apagado] = (58, 52, 50)
+            im = Image.fromarray(fundo, "RGB")
+            # forma normalizada -> pixels da imagem (recorte x0, y0 e escala fator das Regioes) -> miniatura
+            f = s / regioes.fator
+            g = affine_transform(g, [regioes.lado * f, 0, 0, regioes.lado * f,
+                                     (regioes.cx / regioes.fator + regioes.x0) * s + ox,
+                                     (regioes.cy / regioes.fator + regioes.y0) * s + oy])
+        else:
+            im = Image.new("RGB", (lado, lado), (20, 20, 20))
+            g = translate(scale(g, lado * 0.9, lado * 0.9, origin=(0, 0)), lado / 2, lado / 2)
         d = ImageDraw.Draw(im)
         for parte in (g.geoms if hasattr(g, "geoms") else [g]):
             d.polygon(list(parte.exterior.coords), fill=(240, 240, 240))
@@ -268,8 +357,9 @@ class Renderizador:
         return await self._na_fila(self._gerar_bytes, p, largura, fmt, limites=limites)
 
     async def guardar(self, dados, limites=()):
-        """Decodificar e reduzir o upload também é trabalho pesado: entra na mesma fila."""
-        return await self._na_fila(self.guardar_imagem, dados, limites=limites)
+        """Decodificar, reduzir e analisar as cores do upload também é trabalho pesado: entra na
+        mesma fila. Devolve (id, cores)."""
+        return await self._na_fila(self._guardar_e_analisar, dados, limites=limites)
 
     async def miniatura(self, p, limites=()):
         return await self._na_fila(lambda: para_bytes(self._miniatura(p), "PNG"), limites=limites)
