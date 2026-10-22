@@ -315,3 +315,11 @@ def test_login_do_painel_vale_para_a_moderacao(app):
     vencida = str(int(time.time()) - 1)
     adm = {"Cookie": f"{COOKIE}={vencida}.{_assinar(TOKEN, vencida)}"}
     assert _pedir(app, "GET", "/admin/galeria/itens", headers=adm).status_code == 403
+
+
+def test_link_guarda_o_formato(app):
+    j = _criar(app, formato="quadrado", seed=12).json()
+    dados = _pedir(app, "GET", f"/api/arte/{j['id']}").json()
+    assert dados["estado"]["formato"] == "quadrado"
+    og = _pedir(app, "GET", f"/a/{j['id']}/og.jpg")
+    assert Image.open(io.BytesIO(og.content)).size == (1200, 630)

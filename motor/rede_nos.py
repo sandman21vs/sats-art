@@ -23,6 +23,7 @@ import sys
 from dataclasses import dataclass
 
 import numpy as np
+import shapely
 from PIL import Image, ImageDraw, ImageFilter
 from shapely.affinity import scale as shp_scale
 from shapely.geometry import LineString, Point, box
@@ -45,6 +46,7 @@ class Config:
     poeira_longe: float = 0.22  # quanto da rede sobra longe do símbolo (0 = vazio)
     halo: float = 110.0         # largura do halo em volta do círculo/símbolo
     retrato: bool = False       # 9:16 (celular) em vez de 16:9; o desenho mantém o tamanho
+    formato: str = ""           # chave de FORMATOS; vazio = segue `retrato` (estados antigos)
     # pintura (só muda a cor)
     cor: str = "#ff6600"
     brilho: float = 1.0
@@ -52,9 +54,46 @@ class Config:
     multicor: bool = False      # cada parte da logo acende os nós em volta com a sua cor
     cores_arte: tuple = ()      # cor de cada parte (None = segue `cor`); veja campo_de_cores
 
+    def __post_init__(self):
+        # `retrato` é o jeito antigo de pedir 9:16: sem `formato`, ele decide; com, vira só um reflexo
+        if not self.formato:
+            self.formato = "retrato" if self.retrato else "paisagem"
+        if self.formato not in FORMATOS:
+            raise ValueError(f"formato desconhecido: {self.formato}")
+        self.retrato = self.formato == "retrato"
+
     def chave_rede(self):
         return (self.angulo, self.seed, self.circulo, self.tamanho, self.raio,
-                self.zoom, self.malha, self.poeira_longe, self.halo, self.retrato)
+                self.zoom, self.malha, self.poeira_longe, self.halo, self.formato)
+
+
+@dataclass(frozen=True)
+class Formato:
+    """Moldura da arte. `largura`:`altura` é a proporção; `lado` (o lado maior, em px) define o
+    tamanho. `curto` = quantas vezes o lado curto mostra do desenho, comparado ao 16:9 (1 = o mesmo
+    tamanho de símbolo em relação ao lado curto; maior = símbolo menor). `centro_y` = altura do
+    centro do desenho (0 = topo, 1 = base): no papel de parede ele desce para fugir do relógio."""
+    largura: float
+    altura: float
+    curto: float = 1.0
+    centro_y: float = 0.5
+    # área segura (x0, y0, x1, y1 em fração da tela) mostrada como guia na prévia; None = a tela toda
+    segura: tuple = None
+
+
+FORMATOS = {
+    "paisagem": Formato(16, 9),
+    "retrato": Formato(9, 16),
+    "quadrado": Formato(1, 1),                       # Instagram (1080 x 1080)
+    # capa do X: 1500 x 500; o celular corta um pouco em cima e embaixo, e a foto de perfil
+    # cobre o canto de baixo à esquerda: o símbolo fica no meio, numa faixa central
+    "capa_x": Formato(3, 1, curto=0.7, segura=(0.25, 0.12, 0.75, 0.88)),
+    # capa do YouTube: 2560 x 1440, mas só o miolo de 1546 x 423 aparece em todo aparelho
+    "capa_yt": Formato(16, 9, curto=1.45, segura=(0.198, 0.353, 0.802, 0.647)),
+    # papel de parede de celular (≈ 9:19,5): o relógio e os widgets ocupam o terço de cima e as
+    # notificações e atalhos sobem da base; o símbolo fica na faixa do meio, um pouco abaixo
+    "celular": Formato(9, 19.5, centro_y=0.54, segura=(0.06, 0.32, 0.94, 0.78)),
+}
 
 
 class Node:
@@ -82,6 +121,9 @@ def construir_rede(make_holes, cfg: Config) -> Rede:
     if cfg.retrato:  # mesma área e mesma escala, só gira a moldura
         W, H = H, W
     CX, CY = W / 2, H / 2
+    if cfg.formato not in ("paisagem", "retrato"):
+        W, H = tela_em_unidades(cfg)
+        CX, CY = W / 2, H * FORMATOS[cfg.formato].centro_y
     R = cfg.raio
     circulo = cfg.circulo
 
@@ -118,30 +160,53 @@ def construir_rede(make_holes, cfg: Config) -> Rede:
                               1.0 if big else rnd.uniform(0.5, 0.95)))
             pos += rnd.uniform(5, 13)
 
-    def poisson(count, mind, accept, tries=60000):
+    def poisson(count, mind, accept, tries=60000, accept_vec=None):
+        # Mesmo resultado (e mesma sequência de sorteios) da versão simples: cada tentativa
+        # sorteia x e y com rnd.uniform(0, W/H); só a checagem ficou mais rápida (sorteios em
+        # blocos, `accept_vec` vetorizado e saída antecipada na vizinhança).
         pts, grid, cell = [], {}, mind / math.sqrt(2)
-        for _ in range(tries):
-            if len(pts) >= count:
-                break
-            x, y = rnd.uniform(0, W), rnd.uniform(0, H)
-            if not accept(x, y):
-                continue
-            gx, gy = int(x / cell), int(y / cell)
-            ok = True
-            for dx in (-2, -1, 0, 1, 2):
-                for dy in (-2, -1, 0, 1, 2):
+        rr, dist = rnd.random, math.dist
+        viz = [(dx, dy) for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2)]
+        viz.sort(key=lambda d: d[0] * d[0] + d[1] * d[1])  # os vizinhos mais próximos barram mais
+        feitas = 0
+        while feitas < tries and len(pts) < count:
+            n = min(4096, tries - feitas)
+            antes = rnd.getstate()
+            u = [rr() for _ in range(2 * n)]
+            xs, ys = u[0::2], u[1::2]
+            xs = [0 + (W - 0) * a for a in xs]   # = rnd.uniform(0, W)
+            ys = [0 + (H - 0) * b for b in ys]
+            if accept_vec is not None:
+                aceitos = np.flatnonzero(accept_vec(np.array(xs), np.array(ys))).tolist()
+            else:
+                aceitos = [i for i in range(n) if accept(xs[i], ys[i])]
+            achados = len(pts)
+            for i in aceitos:
+                x, y = xs[i], ys[i]
+                gx, gy = int(x / cell), int(y / cell)
+                for dx, dy in viz:
                     q = grid.get((gx + dx, gy + dy))
-                    if q and math.dist(q, (x, y)) < mind:
-                        ok = False
-            if ok:
-                grid[(gx, gy)] = (x, y)
-                pts.append((x, y))
+                    if q and dist(q, (x, y)) < mind:
+                        break
+                else:
+                    grid[(gx, gy)] = (x, y)
+                    pts.append((x, y))
+                    achados += 1
+                    if achados >= count:  # a versão simples pararia aqui: devolve os sorteios não usados
+                        if i + 1 < n:
+                            rnd.setstate(antes)
+                            for _ in range(2 * (i + 1)):
+                                rr()
+                        return pts
+            feitas += n
         return pts
 
     # interior do disco: malha mais solta, um pouco mais densa perto das bordas
-    region_inner = prep(region.buffer(-7))
+    inner_geom = region.buffer(-7)
+    shapely.prepare(inner_geom)
     n_in = int(1400 * (14 / cfg.malha) ** 2 * (R / 300) ** 2)
-    for x, y in poisson(n_in, cfg.malha, lambda x, y: region_inner.contains(Point(x, y))):
+    for x, y in poisson(n_in, cfg.malha, None,
+                        accept_vec=lambda xs, ys: shapely.contains_xy(inner_geom, xs, ys)):
         d = (region.boundary if circulo else holes.boundary).distance(Point(x, y))
         p = 0.35 + 0.65 * math.exp(-d / 45)
         if not circulo:  # sem a borda do disco: vai rareando até emendar na poeira
@@ -154,8 +219,13 @@ def construir_rede(make_holes, cfg: Config) -> Rede:
 
     # poeira fora do círculo: densa perto dele e rareando até as bordas da tela
     tries = round(400000 * (W * H) / (REF_W / 2.7 * REF_W * 9 / 16 / 2.7))
-    for x, y in poisson(20000, 26, lambda x, y: math.dist((x, y), (CX, CY)) > R + 14,
-                        tries=max(tries, 20000)):
+    def fora_do_disco(xs, ys):
+        d = np.hypot(xs - CX, ys - CY)
+        ok = d > R + 14
+        for i in np.flatnonzero(np.abs(d - (R + 14)) < 1e-6):  # na divisa, a conta exata de antes
+            ok[i] = math.dist((xs[i], ys[i]), (CX, CY)) > R + 14
+        return ok
+    for x, y in poisson(20000, 26, None, tries=max(tries, 20000), accept_vec=fora_do_disco):
         d = math.dist((x, y), (CX, CY)) - R
         near = 0.78 if circulo else 0.3  # sem círculo, emenda na densidade do interior
         if rnd.random() < cfg.poeira_longe + near * math.exp(-d / cfg.halo):
@@ -240,10 +310,36 @@ def _hex(c):
     return np.array([int(c[i:i + 2], 16) for i in (0, 2, 4)], float)
 
 
-def dimensoes(lado, retrato=False):
+def dimensoes(lado, retrato=False, formato=None):
     """(largura, altura) em px para `lado` = o lado maior da imagem."""
-    curto = lado * 9 // 16
-    return (curto, lado) if retrato else (lado, curto)
+    formato = formato or ("retrato" if retrato else "paisagem")
+    if formato in ("paisagem", "retrato", "capa_yt"):
+        curto = lado * 9 // 16
+        return (curto, lado) if formato == "retrato" else (lado, curto)
+    f = FORMATOS[formato]
+    if f.largura >= f.altura:
+        return lado, max(1, round(lado * f.altura / f.largura))
+    return max(1, round(lado * f.largura / f.altura)), lado
+
+
+def tela_em_unidades(cfg):
+    """(W, H) da tela em unidades do motor. O lado curto mostra REF_W·9/16/zoom unidades (como no
+    16:9), vezes `curto` do formato."""
+    if cfg.formato in ("paisagem", "retrato"):
+        W, H = REF_W / cfg.zoom, REF_W * 9 / 16 / cfg.zoom
+        return (H, W) if cfg.retrato else (W, H)
+    f = FORMATOS[cfg.formato]
+    curto = REF_W * 9 / 16 / cfg.zoom * f.curto
+    if f.largura >= f.altura:
+        return curto * f.largura / f.altura, curto
+    return curto, curto * f.altura / f.largura
+
+
+def px_por_unidade(cfg, lado):
+    """px de saída por unidade para uma imagem com `lado` px no lado maior."""
+    if cfg.formato in ("paisagem", "retrato"):
+        return cfg.zoom * (lado / REF_W)
+    return lado / max(tela_em_unidades(cfg))
 
 
 PASSO_CAMPO = 6     # unidades por célula do campo de cores
@@ -301,11 +397,14 @@ def campo_de_cores(rede: Rede, cfg: Config, rotulos_na_tela, cores):
     return np.clip(np.round(rgb), 0, 255).astype(np.uint8)
 
 
-def pintar(rede: Rede, cfg: Config, lado=REF_W, campo=None) -> Image.Image:
+def pintar(rede: Rede, cfg: Config, lado=REF_W, campo=None, acesos=None, grao=True) -> Image.Image:
     """`lado` = lado MAIOR da imagem, em px (a largura no paisagem, a altura no retrato).
-    `campo` (de campo_de_cores) troca a cor única `cfg.cor` por uma cor em cada ponto."""
-    out_w, out_h = dimensoes(lado, cfg.retrato)
-    U = cfg.zoom * (lado / REF_W)  # px de saída por unidade (igual nos dois formatos)
+    `campo` (de campo_de_cores) troca a cor única `cfg.cor` por uma cor em cada ponto.
+    `acesos` (animação, veja motor/animacao.py) = (luz de cada nó, luz dos contornos): 0 apagado,
+    1 normal, um pouco mais que 1 = clarão; os fios acendem junto com o mais apagado das pontas.
+    `grao=False` tira o granulado (o GIF, com 256 cores, fica bem menor sem ele)."""
+    out_w, out_h = dimensoes(lado, formato=cfg.formato)
+    U = px_por_unidade(cfg, lado)  # px de saída por unidade (16:9 e 9:16: igual nos dois)
     S = U * SS                     # px de desenho por unidade
 
     base = _hex(cfg.cor)
@@ -327,30 +426,47 @@ def pintar(rede: Rede, cfg: Config, lado=REF_W, campo=None) -> Image.Image:
 
     nodes = rede.nodes
     DW, DH = out_w * SS, out_h * SS
+    luz = None
+    if acesos is not None:
+        luz, luz_aneis = acesos
+        pos = {id(n): k for k, n in enumerate(nodes)}
     lw = lambda u: max(1, round(u * S))  # noqa: E731  largura em unidades -> px de desenho
     lines = Image.new("L", (DW, DH), 0)
     dl = ImageDraw.Draw(lines)
     for i, j, a, bend, width in rede.edges:
         n, m = nodes[i], nodes[j]
+        if luz is not None:
+            a *= min(luz[i], luz[j])
+            if a < 0.004:
+                continue
         dl.line(curve(n.x, n.y, m.x, m.y, bend), fill=int(255 * min(1, a)), width=lw(width))
     for a, b, bend in rede.threads:
-        dl.line(curve(a.x, a.y, b.x, b.y, bend), fill=90, width=lw(0.67))
+        f = 1 if luz is None else min(luz[pos[id(a)]], luz[pos[id(b)]], 1)
+        if f > 0.004:
+            dl.line(curve(a.x, a.y, b.x, b.y, bend), fill=int(90 * f), width=lw(0.67))
     for ring in rede.rings:
-        dl.line([(x * S, y * S) for x, y in ring.coords], fill=150, width=lw(0.67))
+        f = 1 if luz is None else min(luz_aneis, 1.7)
+        if f > 0.004:
+            dl.line([(x * S, y * S) for x, y in ring.coords], fill=int(150 * f), width=lw(0.67))
 
     dots = Image.new("L", (DW, DH), 0)
     dd = ImageDraw.Draw(dots)
-    for n in nodes:
+    for k, n in enumerate(nodes):
         r = n.size * S
-        dd.ellipse((n.x * S - r, n.y * S - r, n.x * S + r, n.y * S + r), fill=int(255 * n.bright))
+        if luz is None:
+            dd.ellipse((n.x * S - r, n.y * S - r, n.x * S + r, n.y * S + r), fill=int(255 * n.bright))
+        elif luz[k] > 0.004:
+            dd.ellipse((n.x * S - r, n.y * S - r, n.x * S + r, n.y * S + r),
+                       fill=int(255 * min(1, n.bright * luz[k])))
 
     lines = lines.resize((out_w, out_h), Image.LANCZOS)
     dots = dots.resize((out_w, out_h), Image.LANCZOS)
     hubs = Image.new("L", (out_w, out_h), 0)
     dh = ImageDraw.Draw(hubs)
-    for n in nodes:
-        if n.kind == "hub":
-            dh.ellipse(((n.x - 5) * U, (n.y - 5) * U, (n.x + 5) * U, (n.y + 5) * U), fill=255)
+    for k, n in enumerate(nodes):
+        if n.kind == "hub" and (luz is None or luz[k] > 0.004):
+            dh.ellipse(((n.x - 5) * U, (n.y - 5) * U, (n.x + 5) * U, (n.y + 5) * U),
+                       fill=255 if luz is None else int(255 * min(1, luz[k])))
 
     def f32(im):
         return np.asarray(im, np.float32) / 255
@@ -363,7 +479,7 @@ def pintar(rede: Rede, cfg: Config, lado=REF_W, campo=None) -> Image.Image:
 
     yy, xx = np.ogrid[0:out_h, 0:out_w]
     glow = np.exp(-((np.hypot(xx - rede.CX * U, yy - rede.CY * U) / U) / 520) ** 2).astype(np.float32)
-    grain = np.random.default_rng(7).normal(0, 2.2, (out_h, out_w)).astype(np.float32)
+    grain = np.random.default_rng(7).normal(0, 2.2, (out_h, out_w)).astype(np.float32) if grao else 0
 
     b = cfg.brilho
     out = np.empty((out_h, out_w, 3), np.uint8)

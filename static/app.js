@@ -17,10 +17,28 @@ const SLIDERS = {
 const CORES = ["#ff6600", "#f7b500", "#ff3d6e", "#9b6bff", "#2fb4ff", "#21d39b", "#f2efe9"];
 // [lado maior em px, nome]; as dimensões do rótulo seguem o formato (paisagem ou retrato)
 const RESOLUCOES = [[1920, "Full HD"], [3840, "4K"], [5120, "5K"], [7680, "8K"]];
-const dimensoes = (lado) => (estado.retrato ? [lado * 9 / 16, lado] : [lado, lado * 9 / 16]);
+// Formatos da arte (os mesmos de motor/rede_nos.py FORMATOS): proporção, resoluções de exportação
+// ([lado maior em px, nome]) e área segura (fração da tela) mostrada como guia na prévia.
+const FORMATOS = {
+  paisagem: { w: 16, h: 9, res: RESOLUCOES },
+  retrato: { w: 9, h: 16, res: RESOLUCOES },
+  quadrado: { w: 1, h: 1, res: [[1080, "Instagram"], [2160, "2K"], [4320, "4K"]] },
+  capa_x: { w: 3, h: 1, res: [[1500, "X"], [3000, "X 2×"], [4500, "X 3×"]], segura: [0.25, 0.12, 0.75, 0.88] },
+  capa_yt: { w: 16, h: 9, res: [[2560, "YouTube"], [3840, "4K"], [7680, "8K"]], segura: [0.198, 0.353, 0.802, 0.647] },
+  celular: { w: 9, h: 19.5, res: [[2796, "iPhone"], [3840, "4K"]], segura: [0.06, 0.32, 0.94, 0.78] },
+};
+const formatoAtual = () => FORMATOS[estado.formato] || FORMATOS.paisagem;
+function dimensoes(lado, formato = estado.formato) {
+  const f = FORMATOS[formato] || FORMATOS.paisagem;
+  if (f.w / f.h === 16 / 9) return [lado, Math.floor(lado * 9 / 16)];
+  if (f.h / f.w === 16 / 9) return [Math.floor(lado * 9 / 16), lado];
+  return f.w >= f.h ? [lado, Math.round(lado * f.h / f.w)] : [Math.round(lado * f.w / f.h), lado];
+}
+// mesmo teto do servidor (render.lado_para): nunca mais pixels que um 16:9 do lado máximo
+const cabe = (lado, formato) => { const [w, h] = dimensoes(lado, formato); return w * h <= INFO.max_export * Math.floor(INFO.max_export * 9 / 16); };
 const rotulo = (lado, nome) => `${nome} · ${dimensoes(lado).join("×")}`;
 const ANGULO_PADRAO = { sat: -21, imagem: 0 };
-const PADRAO = { fonte: "sat", retrato: false, angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
+const PADRAO = { fonte: "sat", formato: "paisagem", retrato: false, angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
   malha: 14, poeira_longe: 0.22, halo: 110, cor: "#ff6600", brilho: 1, fundo: 1, limiar: 60, inverter: false,
   cores_off: [], multicor: false, cores_arte: [], limpar_fundo: false, pontos_fundo: [] };
 
@@ -33,6 +51,9 @@ let estado = { ...PADRAO, ...guardado("rede-nos", {}) };
 if (guardado("rede-nos", null) === null && matchMedia("(orientation: portrait) and (max-width: 760px)").matches) {
   estado.retrato = true;
 }
+// estados antigos só têm `retrato`; o servidor usa `formato` (e mantém `retrato` como reflexo)
+if (!(estado.formato in FORMATOS) || guardado("rede-nos", {}).formato === undefined) estado.formato = estado.retrato ? "retrato" : "paisagem";
+estado.retrato = estado.formato === "retrato";
 if (!(estado.fonte in ANGULO_PADRAO) || estado.fonte === "imagem") {  // a imagem não fica salva entre sessões
   Object.assign(estado, { fonte: "sat", angulo: ANGULO_PADRAO.sat });
 }
@@ -101,42 +122,71 @@ function sincronizar() {
   $("inverter").checked = estado.inverter;
   document.querySelectorAll("[data-fonte]").forEach((b) => b.classList.toggle("on", b.dataset.fonte === estado.fonte));
   $("imgopts").hidden = estado.fonte !== "imagem";
-  document.querySelectorAll("[data-formato]").forEach((b) => b.classList.toggle("on", (b.dataset.formato === "retrato") === estado.retrato));
+  document.querySelectorAll("[data-formato]").forEach((b) => {
+    b.classList.toggle("on", b.dataset.formato === estado.formato); b.setAttribute("aria-checked", String(b.dataset.formato === estado.formato));
+  });
   document.body.classList.toggle("retrato", estado.retrato);
-  for (const o of $("largura").options) o.textContent = rotulo(Number(o.value), RESOLUCOES.find(([w]) => w === Number(o.value))[1]);
+  opcoesResolucao();
+  $("guiaLinha").hidden = !formatoAtual().segura;
+  marcarEstilo();
   sincronizarCoresLogo();
 }
 
 function salvar() { const { imagem_id, ...resto } = estado; guardar("rede-nos", resto); }
 
 // ---------- prévia ----------
-let timer, ocupado = false, pendente = false, primeiraPrevia = true, ultimaPrevia = null;
+let timer, primeiraPrevia = true, ultimaPrevia = null;
 function mudou() {
   salvar(); clearTimeout(timer); timer = setTimeout(renderizar, 220);
   if (!primeiraPrevia) $("dica").hidden = true;
+  marcarEstilo();
 }
 
+// Prévia progressiva: primeiro uma pequena (1/3 da largura, chega rápido, aparece borrada),
+// depois a nítida. Um ajuste novo cancela a nítida em andamento (AbortController: se ela ainda
+// estava na fila do servidor, sai sem gastar CPU). A pequena nunca é cancelada: o ciclo novo
+// espera por ela, assim a pessoa nunca tem mais de dois desenhos no servidor (o limite dele).
+let geracao = 0, nitidaCtl = null, rapidaEmCurso = null;
+const medidas = [];  // [ms até a pequena, ms até a nítida] dos últimos ajustes (para conferir o ganho)
+async function pedirPrevia(rapida, signal) {
+  const r = await fetch("/api/preview" + (rapida ? "?rapida=1" : ""), {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Idioma": idioma }, body: JSON.stringify(estado), signal });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || r.statusText);
+  return r.blob();
+}
+function mostrarPrevia(blob, rapida) {
+  if (!rapida) ultimaPrevia = blob;
+  const img = $("preview"), velho = img.src;
+  img.src = URL.createObjectURL(blob); img.hidden = false;
+  img.classList.toggle("rapida", rapida);
+  if (velho.startsWith("blob:")) URL.revokeObjectURL(velho);
+}
 async function renderizar() {
-  if (ocupado) { pendente = true; return; }
-  ocupado = true;
+  const minha = ++geracao;
+  if (nitidaCtl) { nitidaCtl.abort(); nitidaCtl = null; }
+  if (rapidaEmCurso) await rapidaEmCurso.catch(() => {});
+  if (minha !== geracao) return;  // veio outro ajuste enquanto esperava: ele desenha
   const st = $("status");
   st.className = "status busy"; escrever(st, K("status.desenhando"));
-  const t0 = performance.now();
+  const t0 = performance.now(), medida = [];
   try {
-    const r = await postJSON("/api/preview", pedido());
-    if (!r.ok) throw new Error((await r.json()).erro || r.statusText);
-    ultimaPrevia = await r.blob();
-    const url = URL.createObjectURL(ultimaPrevia);
-    const img = $("preview"), velho = img.src;
-    img.src = url; img.hidden = false;
-    if (velho.startsWith("blob:")) URL.revokeObjectURL(velho);
+    rapidaEmCurso = pedirPrevia(true);
+    let blob;
+    try { blob = await rapidaEmCurso; } finally { rapidaEmCurso = null; }
+    if (minha !== geracao) return;
+    mostrarPrevia(blob, true); medida.push(Math.round(performance.now() - t0));
+    const ctl = nitidaCtl = new AbortController();
+    blob = await pedirPrevia(false, ctl.signal);
+    if (minha !== geracao) return;
+    nitidaCtl = null;
+    mostrarPrevia(blob, false); medida.push(Math.round(performance.now() - t0));
+    medidas.push(medida); if (medidas.length > 20) medidas.shift();
     st.className = "status"; escrever(st, K("status.pronto", { s: Math.round((performance.now() - t0) / 100) / 10 }));
     primeiraPrevia = false;
   } catch (e) {
+    if (e.name === "AbortError" || minha !== geracao) return;
     erroNoStatus(e.message);
   }
-  ocupado = false;
-  if (pendente) { pendente = false; renderizar(); }
 }
 
 // ---------- símbolo ----------
@@ -188,17 +238,104 @@ document.addEventListener("paste", (e) => {
 
 $("limiar").addEventListener("input", (e) => { estado.limiar = parseInt(e.target.value); $("v-limiar").textContent = num(estado.limiar); atualizarForma(); mudou(); });
 $("inverter").addEventListener("change", (e) => { estado.inverter = e.target.checked; sincronizarCoresLogo(); atualizarForma(); mudou(); });
-document.querySelectorAll("[data-formato]").forEach((b) => b.addEventListener("click", () => {
-  estado.retrato = b.dataset.formato === "retrato";
+// ---------- formatos ----------
+// Grade de botões com a proporção desenhada (um retângulo no tamanho certo).
+for (const [id, f] of Object.entries(FORMATOS)) {
+  const b = document.createElement("button");
+  b.type = "button"; b.dataset.formato = id; b.setAttribute("role", "radio");
+  const ico = document.createElement("span"), r = document.createElement("i");
+  ico.className = "ico";
+  const k = 26 / Math.max(f.w, f.h * 1.15);  // o ícone mais alto não passa de ~30 px
+  r.style.width = Math.round(f.w * k) + "px"; r.style.height = Math.round(f.h * k) + "px";
+  ico.append(r);
+  const nome = document.createElement("b"), sub = document.createElement("small");
+  marcar(nome, "fmt." + id); marcar(sub, "fmt." + id + "_d");
+  b.append(ico, nome, sub);
+  b.addEventListener("click", () => {
+    estado.formato = id; estado.retrato = id === "retrato";
+    sincronizar(); mudou();
+  });
+  $("formatos").append(b);
+}
+
+// Resoluções do formato escolhido, até o máximo do servidor (no pior caso, a maior que couber).
+function opcoesResolucao() {
+  const sel = $("largura"), antes = sel.options.length ? sel.selectedIndex === sel.options.length - 1 : true;
+  const atual = sel.value, lista = formatoAtual().res.filter(([w]) => w <= INFO.max_export && cabe(w));
+  if (!lista.length) {  // servidor com máximo baixo: o maior lado que cabe
+    let w = INFO.max_export;
+    while (w > 640 && !cabe(w)) w -= 16;
+    lista.push([w, "Max"]);
+  }
+  sel.innerHTML = "";
+  for (const [w, nome] of lista) sel.add(new Option(rotulo(w, nome), w));
+  // a escolha da pessoa fica se existir no formato novo; senão (ou se era a maior), a maior
+  sel.value = !antes && [...sel.options].some((o) => o.value === atual) ? atual : sel.options[sel.options.length - 1].value;
+}
+
+// Guia da área segura por cima da prévia (capas e papel de parede).
+function posicionarGuia() {
+  const g = $("guiaSegura"), img = $("preview"), seg = formatoAtual().segura;
+  if (!seg || img.hidden || !$("guia").checked || !img.naturalWidth) { g.hidden = true; return; }
+  const a = img.getBoundingClientRect(), m = $("guiaSegura").parentElement.getBoundingClientRect();
+  Object.assign(g.style, { left: a.left - m.left + "px", top: a.top - m.top + "px", width: a.width + "px", height: a.height + "px" });
+  const [x0, y0, x1, y1] = seg, i = g.firstElementChild;
+  Object.assign(i.style, { left: x0 * 100 + "%", top: y0 * 100 + "%", width: (x1 - x0) * 100 + "%", height: (y1 - y0) * 100 + "%" });
+  g.hidden = false;
+}
+$("guia").addEventListener("change", posicionarGuia);
+$("preview").addEventListener("load", posicionarGuia);
+addEventListener("resize", posicionarGuia);
+
+// ---------- estilos prontos ----------
+// Cada estilo (static/estilos/estilos.json) muda a cara da rede; a logo, o formato, a semente e a
+// cor ficam (só um estilo que depende da cor, como o Gelo, troca a cor).
+let ESTILOS = null;
+async function carregarEstilos() {
+  try {
+    const r = await fetch("/estilos/estilos.json");
+    if (!r.ok) return;
+    ESTILOS = await r.json();
+  } catch (e) { return; }
+  const box = $("estilos");
+  box.innerHTML = "";
+  for (const e of ESTILOS.estilos) {
+    const b = document.createElement("button");
+    b.type = "button"; b.dataset.estilo = e.id;
+    const img = Object.assign(document.createElement("img"), { src: `/estilos/${e.id}.webp`, alt: "", loading: "lazy", width: 96, height: 54 });
+    const nome = document.createElement("span");
+    nome.textContent = e.emoji + " "; const t2 = document.createElement("b"); t2.style.fontWeight = "500";
+    marcar(t2, "estilo." + e.id); nome.append(t2);
+    b.dataset.i18nVars = JSON.stringify({ nome: t("estilo." + e.id) }); b.setAttribute("data-i18n-title", "p2.estilo_title"); aplicarEm(b);
+    b.append(img, nome);
+    b.addEventListener("click", () => aplicarEstilo(e));
+    box.append(b);
+  }
+  marcarEstilo();
+}
+function aplicarEstilo(e) {
+  Object.assign(estado, ESTILOS.base, e.params);
+  if (e.params.cor) estado.multicor = false;
   sincronizar(); mudou();
-}));
+}
+// o estilo cujos parâmetros batem com o estado fica marcado
+function marcarEstilo() {
+  if (!ESTILOS) return;
+  document.querySelectorAll("[data-estilo]").forEach((b) => {
+    const e = ESTILOS.estilos.find((x) => x.id === b.dataset.estilo);
+    const p = { ...ESTILOS.base, ...e.params };
+    const igual = Object.entries(p).every(([k, v]) => (typeof v === "number" ? Math.abs(estado[k] - v) < 1e-9 : estado[k] === v));
+    b.classList.toggle("on", igual);
+    b.dataset.i18nVars = JSON.stringify({ nome: t("estilo." + e.id) }); aplicarEm(b);
+  });
+}
 $("circulo").addEventListener("change", (e) => { estado.circulo = e.target.checked; mudou(); });
 $("seed").addEventListener("change", (e) => { estado.seed = parseInt(e.target.value) || 0; mudou(); });
 $("sortear").addEventListener("click", () => { estado.seed = Math.floor(Math.random() * 100000); $("seed").value = estado.seed; mudou(); });
 $("cor").addEventListener("input", (e) => { estado.cor = e.target.value; if (estado.multicor) definirMulticor(false); sincronizar(); mudou(); });
 $("reset").addEventListener("click", () => {
-  const { fonte, imagem_id, limiar, inverter, retrato, cores_off, limpar_fundo, pontos_fundo } = estado;  // o formato escolhido fica
-  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, cores_off, limpar_fundo, pontos_fundo, angulo: ANGULO_PADRAO[fonte],
+  const { fonte, imagem_id, limiar, inverter, retrato, formato, cores_off, limpar_fundo, pontos_fundo } = estado;  // o formato escolhido fica
+  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, formato, cores_off, limpar_fundo, pontos_fundo, angulo: ANGULO_PADRAO[fonte],
     cores_arte: paletaLogo.map((c) => c.arte) };
   sincronizar(); mudou();
 });
@@ -490,10 +627,8 @@ async function carregarInfo() {
     if (!r.ok) return;  // mantém a informação anterior (ex.: 429 por excesso de pedidos)
     INFO = await r.json();
   } catch (e) { return; }
-  const sel = $("largura"), atual = sel.value;
-  sel.innerHTML = "";
-  for (const [w, nome] of RESOLUCOES.filter(([w]) => w <= INFO.max_export)) sel.add(new Option(rotulo(w, nome), w));
-  sel.value = atual && [...sel.options].some((o) => o.value === atual) ? atual : sel.options[sel.options.length - 1].value;
+  opcoesResolucao();
+  configurarAnimacao();
 
   configurarLinks();
   configurarReport();
@@ -690,6 +825,32 @@ async function provaDeTrabalho() {
   return { ...d, nonce };
 }
 
+// ---------- animação ----------
+// Vídeo curto (MP4) ou GIF dos nós acendendo, gerado no servidor (os tipos vêm de /api/info).
+let ultimaAnim = null;
+function configurarAnimacao() {
+  const tipos = INFO.animacao || [];
+  $("blocoAnim").hidden = !tipos.length;
+  const sel = $("tipoAnim"), atual = sel.value;
+  sel.innerHTML = "";
+  for (const tp of tipos) { const o = new Option(t("anim." + tp), tp); o.dataset.i18n = "anim." + tp; sel.add(o); }
+  if (tipos.includes(atual)) sel.value = atual;
+  sel.hidden = tipos.length < 2;
+}
+$("baixarAnim").addEventListener("click", async () => {
+  const btn = $("baixarAnim"), msg = $("msgAnim");
+  btn.disabled = true; $("dica").hidden = true; mensagem(msg, K("anim.gerando"));
+  try {
+    const r = await postJSON("/api/animacao", { ...estado, tipo: $("tipoAnim").value, nome: $("nome").value.trim() });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).erro || r.statusText);
+    const nome = r.headers.get("X-Nome-Arquivo") || "rede-animacao";
+    ultimaAnim = new File([await r.blob()], nome, { type: r.headers.get("Content-Type") || "" });
+    baixar(ultimaAnim);
+    mensagem(msg, K("anim.pronta"), "sucesso");
+  } catch (e) { mensagem(msg, e.message, "erro"); }
+  btn.disabled = false;
+});
+
 // ---------- compartilhar ----------
 // Convite com os dois jeitos de "jogar": criar e ganhar sats, ou atacar o site e roubar o pote.
 function convite(site) {
@@ -843,7 +1004,7 @@ $("enviarReport").addEventListener("click", async () => {
   try {
     const r = await postJSON("/api/reportar", {
       tipos, mensagem: texto, contato: $("reportContato").value.trim(), erro: ultimoErro,
-      retrato: estado.retrato, tela: `${innerWidth}x${innerHeight}`,
+      retrato: estado.retrato, formato: estado.formato, tela: `${innerWidth}x${innerHeight}`,
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.erro || t("report.falha"));
@@ -950,7 +1111,7 @@ document.querySelectorAll("[data-copiar]").forEach((b) => b.addEventListener("cl
 // ---------- idioma ----------
 function trocarIdioma(l) {
   guardar("idioma", l); definirIdioma(l);
-  textosInfo(); atualizarBotao();
+  textosInfo(); atualizarBotao(); marcarEstilo();
   sincronizar(); desenharCoresLogo();  // números dos controles e % das cores no formato do idioma
   if (!$("modalCompartilhar").hidden) textoConvite();
 }
@@ -959,6 +1120,7 @@ document.querySelectorAll("[data-idioma]").forEach((b) => b.addEventListener("cl
 // ---------- início ----------
 definirIdioma(idioma);
 sincronizar();
+carregarEstilos();
 const abriuArte = location.pathname.startsWith("/a/");  // link de uma arte: galeria.js carrega e desenha
 carregarInfo().then(() => { if (!guardado("viu-tutorial", false) && !abriuArte) abrir("tutorial"); });
 if (!abriuArte) renderizar();

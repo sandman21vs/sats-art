@@ -1,0 +1,15 @@
+{
+  "base": {"malha": 14, "halo": 110, "poeira_longe": 0.22, "brilho": 1, "fundo": 1, "raio": 300, "zoom": 2.7,
+           "circulo": true, "tamanho": 1},
+  "estilos": [
+    {"id": "classico", "emoji": "✨", "params": {}},
+    {"id": "neon", "emoji": "💡", "params": {"malha": 12, "halo": 130, "poeira_longe": 0.08, "brilho": 2, "fundo": 0.2, "zoom": 3.2}},
+    {"id": "minimal", "emoji": "◯", "params": {"malha": 26, "halo": 60, "poeira_longe": 0, "brilho": 1.4, "fundo": 0.3, "circulo": false, "tamanho": 1.3}},
+    {"id": "constelacao", "emoji": "🌌", "params": {"malha": 30, "halo": 260, "poeira_longe": 0.45, "brilho": 1.2}},
+    {"id": "galaxia", "emoji": "🪐", "params": {"zoom": 1.6, "malha": 9, "halo": 300, "poeira_longe": 0.45, "fundo": 1.4}},
+    {"id": "destaque", "emoji": "🔍", "params": {"zoom": 4.6, "halo": 90, "malha": 12, "poeira_longe": 0.2, "brilho": 1.1}},
+    {"id": "brasa", "emoji": "🔥", "params": {"malha": 10, "halo": 120, "poeira_longe": 0.1, "brilho": 2, "fundo": 2.5, "raio": 340}},
+    {"id": "teia", "emoji": "🕸️", "params": {"malha": 8, "halo": 200, "poeira_longe": 0.3, "brilho": 0.8, "fundo": 0.8, "raio": 420, "zoom": 2.4}},
+    {"id": "gelo", "emoji": "❄️", "params": {"cor": "#8fd8ff", "malha": 16, "halo": 150, "poeira_longe": 0.15, "brilho": 1.4, "fundo": 0.25}}
+  ]
+}

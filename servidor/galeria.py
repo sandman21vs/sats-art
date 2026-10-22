@@ -39,8 +39,8 @@ PROTEGIDO_S = 7 * 86400   # quando o disco enche, artes acessadas na última sem
 LIMPEZA_S = 3600
 MAX_NOME = 60
 CHAVES_SIMBOLO = {"angulo", "seed", "circulo", "tamanho", "raio", "zoom", "malha", "poeira_longe", "halo",
-                  "retrato", "cor", "brilho", "fundo", "multicor", "cores_arte"}
-CHAVES_IMAGEM = {"imagem_id", "limiar", "inverter", "cores_off"}
+                  "retrato", "formato", "cor", "brilho", "fundo", "multicor", "cores_arte"}
+CHAVES_IMAGEM = {"imagem_id", "limiar", "inverter", "cores_off", "limpar_fundo", "pontos_fundo"}
 _CONTROLE = re.compile(r"[\x00-\x1f\x7f​-‏‪-‮⁦-⁩]")
 
 
@@ -186,10 +186,11 @@ def criar_router(*, cfg, render, ip_de, limitar, ler_json, Recusado, limites_ren
 
     def desenhar(params):
         """Na fila do render: a arte uma vez, recortada para o link e para a galeria."""
-        retrato = params.get("retrato") is True
-        lado = 1920 if retrato else 1280  # o recorte central 1200×630 sai nítido nos dois formatos
+        formato = params.get("formato") or ("retrato" if params.get("retrato") is True else "paisagem")
+        w, h = dimensoes(1000, formato=formato)
+        retrato = h > w
+        lado = 1920 if retrato else 1280  # o recorte central 1200×630 sai nítido em qualquer formato
         im, _ = render._gerar(params, lado)
-        assert im.size == dimensoes(lado, retrato)
         og = _bytes(_cobrir(im, OG_W, OG_H), "JPEG", quality=86, optimize=True, progressive=True)
         mini = _bytes(_cobrir(im, MINI_W, MINI_H), "WEBP", quality=72, method=4)
         logo, cores = None, []
