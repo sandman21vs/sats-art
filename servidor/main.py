@@ -24,6 +24,7 @@ from .eventos import evento
 from .coinos import Coinos, CoinosErro
 from .config import Config
 from .db import DB
+from .i18n import idioma_de, traduzir
 from .lnurl import LnurlErro
 from .recompensas import Recompensas, ResgateErro
 from .render import Excesso, ImagemInvalida, Ocupado, ParametroInvalido, Renderizador, dimensoes
@@ -144,19 +145,24 @@ def _origem_permitida(req: Request):
     return origem != "null" and urlsplit(origem).netloc.lower() in permitidos
 
 
+def _idioma(req: Request):
+    """Idioma das mensagens de erro: a página manda X-Idioma (pt, en ou de)."""
+    return idioma_de(req.headers.get("x-idioma"))
+
+
 @app.middleware("http")
 async def mesma_origem(request: Request, call_next):
     if request.method == "POST":
         if not _origem_permitida(request):
             evento("pedido_outra_origem", "warning", rota=request.url.path[:200], ruidoso=True,
                    origem=(request.headers.get("origin") or "")[:100])
-            return JSONResponse({"erro": "Pedido de outra origem."}, status_code=403)
+            return JSONResponse({"erro": traduzir("Pedido de outra origem.", _idioma(request))}, status_code=403)
         # Content-Type que um formulário ou fetch "simples" de outro site não consegue mandar
         # sem preflight (que este servidor não autoriza)
         tipo = request.headers.get("content-type", "").split(";")[0].strip().lower()
         esperado = "image/" if request.url.path == "/api/imagem" else "application/json"
         if not (tipo.startswith(esperado) if esperado.endswith("/") else tipo == esperado):
-            return JSONResponse({"erro": "Pedido inválido."}, status_code=415)
+            return JSONResponse({"erro": traduzir("Pedido inválido.", _idioma(request))}, status_code=415)
     return await call_next(request)
 
 
@@ -187,7 +193,7 @@ class Recusado(Exception):
 async def _recusado(req, e: Recusado):
     evento("pedido_recusado", "warning" if e.status == 429 else "info", ruidoso=True, rota=req.url.path[:200],
            status=e.status, motivo=e.msg, ip=antiabuso.hash_ip(cfg.ip_salt, ip_de(req))[:12])
-    return JSONResponse({"erro": e.msg}, status_code=e.status)
+    return JSONResponse({"erro": traduzir(e.msg, _idioma(req))}, status_code=e.status)
 
 
 @app.exception_handler(Exception)
@@ -195,7 +201,7 @@ async def _inesperado(req, e: Exception):
     log.exception("erro inesperado em %s", req.url.path[:200])
     evento("erro_interno", "error", rota=req.url.path[:200], tipo=type(e).__name__)
     # esta resposta é montada fora do middleware `cabecalhos`: põe os cabeçalhos aqui
-    return JSONResponse({"erro": "Erro interno. Tente de novo."}, status_code=500, headers=SEGURANCA)
+    return JSONResponse({"erro": traduzir("Erro interno. Tente de novo.", _idioma(req))}, status_code=500, headers=SEGURANCA)
 
 
 AVISO_PROXY_S = 600
@@ -337,17 +343,20 @@ async def gerar_ou_recusar(p, largura, fmt, ip):
 
 # ---------- páginas ----------
 def pagina_com_versao():
-    """index.html pedindo o app.js com a versão no endereço (/app.js?v=<hash>).
+    """index.html pedindo o app.js e o i18n.js com a versão no endereço (/app.js?v=<hash>).
 
     Proxies como o Cloudflare podem trocar o Cache-Control do app.js por horas de cache
     no navegador; sem a versão, quem voltasse ao site depois de uma atualização ficaria
     com o JavaScript antigo e a página nova, e o site travaria em "Carregando…"."""
     with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
-        return f.read().replace('src="/app.js"', f'src="/app.js?v={versao_app()}"')
+        html = f.read()
+    for arquivo in ("i18n.js", "app.js"):
+        html = html.replace(f'src="/{arquivo}"', f'src="/{arquivo}?v={versao_app(arquivo)}"')
+    return html
 
 
-def versao_app():
-    with open(os.path.join(STATIC, "app.js"), "rb") as f:
+def versao_app(arquivo="app.js"):
+    with open(os.path.join(STATIC, arquivo), "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()[:12]
 
 
@@ -359,6 +368,12 @@ async def index():
 @app.get("/app.js")
 async def app_js():
     return FileResponse(os.path.join(STATIC, "app.js"), media_type="text/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/i18n.js")
+async def i18n_js():
+    return FileResponse(os.path.join(STATIC, "i18n.js"), media_type="text/javascript",
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -601,6 +616,7 @@ async def reportar(req: Request):
             contexto.append(f"Pote: {await recompensas.saldo()} sats (reserva {cfg.reserva_pote})")
     formato = "em pé" if p.get("retrato") is True else "deitada"
     contexto.append(f"Arte: {formato}" + (f" · tela {tela}" if tela else ""))
+    contexto.append(f"Idioma da página: {_idioma(req)}")
     contexto.append("Navegador: " + _texto_report(req.headers.get("user-agent"), 160, linhas=False))
     contexto.append(f"Versão do app: {versao_app()} · {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC")
     partes.append("\n".join(contexto))

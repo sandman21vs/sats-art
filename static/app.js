@@ -1,17 +1,17 @@
 "use strict";
 const SLIDERS = {
   "sliders-basico": [
-    ["tamanho", "Tamanho do símbolo", 0.3, 2.0, 0.01],
-    ["brilho", "Brilho", 0.3, 2, 0.01],
+    ["tamanho", "sl.tamanho", 0.3, 2.0, 0.01],
+    ["brilho", "sl.brilho", 0.3, 2, 0.01],
   ],
   "sliders-avancado": [
-    ["angulo", "Inclinação (°)", -90, 90, 1],
-    ["zoom", "Zoom (tamanho do desenho na tela)", 1, 6, 0.05],
-    ["raio", "Tamanho do círculo", 150, 450, 1],
-    ["malha", "Espaço entre nós (menor = mais denso)", 8, 30, 0.5],
-    ["halo", "Largura do halo", 40, 300, 1],
-    ["poeira_longe", "Rede longe do símbolo", 0, 0.5, 0.01],
-    ["fundo", "Claridade do fundo", 0, 2.5, 0.01],
+    ["angulo", "sl.angulo", -90, 90, 1],
+    ["zoom", "sl.zoom", 1, 6, 0.05],
+    ["raio", "sl.raio", 150, 450, 1],
+    ["malha", "sl.malha", 8, 30, 0.5],
+    ["halo", "sl.halo", 40, 300, 1],
+    ["poeira_longe", "sl.poeira_longe", 0, 0.5, 0.01],
+    ["fundo", "sl.fundo", 0, 2.5, 0.01],
   ],
 };
 const CORES = ["#ff6600", "#f7b500", "#ff3d6e", "#9b6bff", "#2fb4ff", "#21d39b", "#f2efe9"];
@@ -26,6 +26,7 @@ const PADRAO = { fonte: "sat", retrato: false, angulo: -21, seed: 21, circulo: t
 const guardado = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) ?? padrao; } catch (e) { return padrao; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
+idioma = detectarIdioma(guardado("idioma", null));
 let estado = { ...PADRAO, ...guardado("rede-nos", {}) };
 // primeira visita pelo celular em pé: já começa no formato da tela do celular
 if (guardado("rede-nos", null) === null && matchMedia("(orientation: portrait) and (max-width: 760px)").matches) {
@@ -40,30 +41,30 @@ let DIA = null;  // { feitos, ganho_hoje, restante_hoje, proxima }
 
 const $ = (id) => document.getElementById(id);
 const fmt = (v, step) => (step < 1 ? Number(v).toFixed(step < 0.1 ? 2 : 1) : String(v));
-const num = (n) => Number(n).toLocaleString("pt-BR");
+const num = (n) => Number(n).toLocaleString(LOCAIS[idioma]);
 // JSON com Content-Type explícito: o servidor recusa POST sem ele (proteção contra CSRF)
-const postJSON = (url, corpo) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+const postJSON = (url, corpo) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Idioma": idioma }, body: JSON.stringify(corpo) });
 // o último erro mostrado vai junto, se a pessoa reportar um problema
 let ultimoErro = "";
+const textoDe = (v) => (v && typeof v === "object" ? t(v.k, v.v) : String(v));  // texto simples ou K(chave, vars)
 const mensagem = (el, texto, tipo = "") => {
-  el.className = "msg " + tipo; el.textContent = texto;
-  if (tipo === "erro" && texto) ultimoErro = String(texto);
+  el.className = "msg " + tipo; escrever(el, texto);
+  if (tipo === "erro" && texto) ultimoErro = textoDe(texto);
 };
 const erroNoStatus = (texto) => {
-  $("status").className = "status erro"; $("status").textContent = texto;
-  if (texto) ultimoErro = String(texto);
+  $("status").className = "status erro"; escrever($("status"), texto);
+  if (texto) ultimoErro = textoDe(texto);
 };
 const enderecoValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.replace(/^lightning:/i, ""));
 // sem pagamentos externos liberados no servidor, só endereços @coinos.io recebem
 const enderecoAceito = (e) => enderecoValido(e) && (INFO.pagamento_externo || /@coinos\.io$/i.test(e.trim()));
-const ordinal = (i) => `${i + 1}ª`;
 
 // ---------- controles ----------
 for (const [box, list] of Object.entries(SLIDERS)) {
   for (const [key, label, min, max, step] of list) {
     const row = document.createElement("div");
     row.className = "row";
-    row.innerHTML = `<label>${label} <span id="v-${key}"></span></label>
+    row.innerHTML = `<label><span class="t" data-i18n="${label}"></span> <span id="v-${key}"></span></label>
       <input type="range" id="${key}" min="${min}" max="${max}" step="${step}">`;
     $(box).appendChild(row);
     const inp = row.querySelector("input");
@@ -72,7 +73,8 @@ for (const [box, list] of Object.entries(SLIDERS)) {
 }
 for (const c of CORES) {
   const b = document.createElement("button");
-  b.style.background = c; b.dataset.cor = c; b.title = c; b.setAttribute("aria-label", "Cor " + c);
+  b.style.background = c; b.dataset.cor = c; b.title = c;
+  b.dataset.i18nVars = JSON.stringify({ cor: c }); b.setAttribute("data-i18n-aria-label", "p2.cor_aria");
   b.addEventListener("click", () => { estado.cor = c; sincronizar(); mudou(); });
   $("cores").insertBefore(b, $("cores").querySelector(".outra"));
 }
@@ -107,7 +109,7 @@ async function renderizar() {
   if (ocupado) { pendente = true; return; }
   ocupado = true;
   const st = $("status");
-  st.className = "status busy"; st.textContent = "Desenhando…";
+  st.className = "status busy"; escrever(st, K("status.desenhando"));
   const t0 = performance.now();
   try {
     const r = await postJSON("/api/preview", estado);
@@ -117,7 +119,7 @@ async function renderizar() {
     const img = $("preview"), velho = img.src;
     img.src = url; img.hidden = false;
     if (velho.startsWith("blob:")) URL.revokeObjectURL(velho);
-    st.className = "status"; st.textContent = `Pronto em ${((performance.now() - t0) / 1000).toFixed(1)} s`;
+    st.className = "status"; escrever(st, K("status.pronto", { s: ((performance.now() - t0) / 1000).toFixed(1) }));
     primeiraPrevia = false;
   } catch (e) {
     erroNoStatus(e.message);
@@ -136,11 +138,11 @@ document.querySelectorAll("[data-fonte]").forEach((b) => b.addEventListener("cli
 
 async function carregarImagem(blob) {
   if (!blob || !blob.type.startsWith("image/")) return;
-  const r = await fetch("/api/imagem", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+  const r = await fetch("/api/imagem", { method: "POST", headers: { "Content-Type": blob.type, "X-Idioma": idioma }, body: blob });
   const j = await r.json();
   if (!r.ok) { erroNoStatus(j.erro); return; }
   $("thumb").src = URL.createObjectURL(blob); $("thumb").hidden = false;
-  $("dropTxt").textContent = "Trocar imagem: arraste, cole ou clique";
+  marcar($("dropTxt"), "p1.drop_trocar");
   estado.imagem_id = j.id;
   estado.fonte = "imagem"; estado.angulo = 0;
   document.querySelector('[data-fonte="imagem"]').disabled = false;
@@ -202,24 +204,25 @@ async function carregarInfo() {
   $("tutGanhe").hidden = !INFO.recompensas;
   $("abrirBounty3").hidden = !INFO.recompensas;  // sem recompensas não há pote para roubar
   $("desafio").classList.toggle("sozinho", !INFO.recompensas);
-  $("tutTitulo").textContent = INFO.recompensas ? "Crie arte e ganhe sats ⚡" : "Crie sua arte ✨";
-  if (INFO.recompensas) {
-    const seq = INFO.recompensas_seq;
-    $("ganheTitulo").textContent = `Ganhe até ${INFO.limite_dia} sats por dia`;
-    $("ganheSub").textContent = seq.map((s, i) => `${s} sats na ${ordinal(i)} arte`).join(" + ") + ". Grátis!";
-    $("tutGanheTxt").textContent = `Coloque seu endereço Lightning: ${seq.map((s, i) => `${s} sats na ${ordinal(i)}`).join(", ")} arte do dia.`;
-    $("poteSaldo").textContent = INFO.pote == null ? "…" : `${num(INFO.pote)} sats`;
-    $("tituloPasso3").textContent = "Baixe e ganhe sats";
-    if (!INFO.pagamento_externo) {
-      $("ln").placeholder = "voce@coinos.io";
-      $("hintLn").innerHTML = "";
-      $("hintLn").append("Por enquanto pagamos para endereços ", Object.assign(document.createElement("b"), { textContent: "@coinos.io" }),
-        ". Não tem? Crie grátis em ", Object.assign(document.createElement("a"), { textContent: "coinos.io", href: "https://coinos.io", target: "_blank", rel: "noopener" }),
-        " (leva 1 minuto).");
-    }
-    await carregarDia();
-  }
+  textosInfo();
+  if (INFO.recompensas) await carregarDia();
   atualizarBotao();
+}
+// textos que dependem do que o servidor informou (refeitos quando o idioma muda)
+function textosInfo() {
+  marcar($("tutTitulo"), INFO.recompensas ? "tut.titulo" : "tut.titulo_sem");
+  if (!INFO.recompensas) return;
+  const seq = INFO.recompensas_seq;
+  marcar($("ganheTitulo"), "ganhe.titulo", { n: INFO.limite_dia });
+  $("ganheSub").textContent = t("ganhe.sub", { lista: seq.map((s, i) => t("ganhe.item", { sats: s, n: ordinal(i) })).join(" + ") });
+  $("tutGanheTxt").textContent = t("tut.3d_lista", { lista: seq.map((s, i) => t("ganhe.item_curto", { sats: s, n: ordinal(i) })).join(", ") });
+  $("poteSaldo").textContent = INFO.pote == null ? "…" : t("pote.saldo", { n: num(INFO.pote) });
+  marcar($("tituloPasso3"), "p3.titulo_ganhe");
+  if (!INFO.pagamento_externo) {
+    $("ln").setAttribute("data-i18n-placeholder", "p3.ph_coinos"); aplicarEm($("ln"));
+    marcar($("hintLn"), "p3.hint_coinos", null, true);
+  }
+  if (DIA) textoDia();
 }
 setInterval(carregarInfo, 60000);
 
@@ -232,19 +235,22 @@ async function carregarDia() {
   } catch (err) { return; }
   const pct = INFO.limite_dia ? (100 * DIA.ganho_hoje / INFO.limite_dia) : 0;
   $("barra").style.width = pct + "%";
-  $("txtProgresso").textContent = DIA.proxima
-    ? `Hoje você ganhou ${DIA.ganho_hoje} de ${INFO.limite_dia} sats · a próxima arte vale ${DIA.proxima}`
-    : `Você ganhou os ${INFO.limite_dia} sats de hoje! 🎉 Volte amanhã.`;
+  textoDia();
   atualizarBotao();
+}
+function textoDia() {
+  if (DIA.proxima) marcar($("txtProgresso"), "ganhe.progresso", { ganho: DIA.ganho_hoje, limite: INFO.limite_dia, prox: DIA.proxima });
+  else marcar($("txtProgresso"), "ganhe.completo", { limite: INFO.limite_dia });
 }
 
 function atualizarBotao() {
   const b = $("exportar"), e = $("ln").value.trim();
-  if (!INFO.recompensas) { b.textContent = "Baixar arte"; return; }
-  if (DIA && !DIA.proxima) b.textContent = "Baixar arte (sats de hoje já recebidos)";
-  else if (!enderecoValido(e)) b.textContent = `Baixar arte · ponha o endereço para ganhar ${DIA?.proxima || INFO.recompensas_seq[0]} sats`;
-  else if (!enderecoAceito(e)) b.textContent = "Baixar arte · use um endereço @coinos.io para ganhar";
-  else b.textContent = `Baixar e ganhar ${DIA?.proxima || INFO.recompensas_seq[0]} sats ⚡`;
+  if (!INFO.recompensas) { marcar(b, "btn.baixar"); return; }
+  const sats = DIA?.proxima || INFO.recompensas_seq[0];
+  if (DIA && !DIA.proxima) marcar(b, "btn.hoje_ja");
+  else if (!enderecoValido(e)) marcar(b, "btn.ponha", { sats });
+  else if (!enderecoAceito(e)) marcar(b, "btn.coinos");
+  else marcar(b, "btn.ganhar", { sats });
 }
 $("ln").value = guardado("ln-endereco", "");
 let timerLn;
@@ -262,7 +268,7 @@ function baixar(arquivo) {
 
 $("exportar").addEventListener("click", async () => {
   const btn = $("exportar"), msg = $("msgExport");
-  btn.disabled = true; $("dica").hidden = true; mensagem(msg, "Desenhando em alta resolução… leva alguns segundos");
+  btn.disabled = true; $("dica").hidden = true; mensagem(msg, K("exp.desenhando"));
   try {
     const corpo = { ...estado, largura: parseInt($("largura").value), nome: $("nome").value.trim() };
     const r = await postJSON("/api/exportar", corpo);
@@ -273,7 +279,7 @@ $("exportar").addEventListener("click", async () => {
     baixar(ultimoArquivo);
     mensagem(msg, "");
     $("cartao").hidden = false;
-    $("resultado").textContent = "Arte baixada! 🎉";
+    marcar($("resultado"), "res.baixada");
     mensagem($("msgResgate"), "");
     $("blocoReceber").hidden = true;
     $("cartao").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -282,12 +288,11 @@ $("exportar").addEventListener("click", async () => {
     if (INFO.recompensas && ultimoToken && (!DIA || DIA.proxima)) {
       if (enderecoAceito(e)) await receber(e);
       else {
-        mensagem($("msgResgate"), INFO.pagamento_externo || !enderecoValido(e)
-          ? `Coloque seu endereço Lightning no passo 3 e toque em receber para ganhar ${DIA?.proxima || ""} sats.`
-          : `Use um endereço @coinos.io no passo 3 e toque em receber para ganhar ${DIA?.proxima || ""} sats.`);
+        const sats = DIA?.proxima || "";
+        mensagem($("msgResgate"), K(INFO.pagamento_externo || !enderecoValido(e) ? "res.coloque" : "res.use_coinos", { sats }));
         $("blocoReceber").hidden = false;
         $("receber").disabled = false;
-        $("receber").textContent = `Receber ${DIA?.proxima || ""} sats ⚡`;
+        marcar($("receber"), "res.receber_n", { sats });
       }
     }
   } catch (e) { mensagem(msg, e.message, "erro"); }
@@ -299,8 +304,7 @@ $("receber").addEventListener("click", () => {
   const e = $("ln").value.trim();
   if (!enderecoAceito(e)) {
     $("ln").focus();
-    mensagem($("msgResgate"), INFO.pagamento_externo ? "Digite um endereço no formato voce@carteira.com no passo 3."
-      : "Por enquanto só pagamos para endereços @coinos.io. Crie o seu grátis em coinos.io.", "erro");
+    mensagem($("msgResgate"), K(INFO.pagamento_externo ? "res.digite" : "res.so_coinos"), "erro");
     return;
   }
   receber(e);
@@ -311,23 +315,21 @@ async function receber(endereco) {
   guardar("ln-endereco", endereco);
   $("blocoReceber").hidden = true;
   try {
-    mensagem(msg, "Verificando que você é humano… (alguns segundos)");
+    mensagem(msg, K("res.humano"));
     const prova = await provaDeTrabalho();
-    mensagem(msg, "Enviando seus sats… ⚡");
+    mensagem(msg, K("res.enviando"));
     const r = await postJSON("/api/resgatar", { token: ultimoToken, endereco, prova });
     const j = await r.json();
     if (!r.ok) throw new Error(j.erro);
-    $("resultado").textContent = `Você ganhou ${j.sats} sats! ⚡`;
-    mensagem(msg, j.proxima
-      ? `Já estão na sua carteira. Crie mais uma arte e ganhe mais ${j.proxima} sats hoje!`
-      : `Já estão na sua carteira. Você completou os ${INFO.limite_dia} sats de hoje. Volte amanhã!`, "sucesso");
+    marcar($("resultado"), "res.ganhou", { sats: j.sats });
+    mensagem(msg, j.proxima ? K("res.ok_mais", { sats: j.proxima }) : K("res.ok_fim", { limite: INFO.limite_dia }), "sucesso");
     chuvaDeSats(j.sats);
     DIA = j; carregarInfo();
   } catch (e) {
     mensagem(msg, e.message, "erro");
     $("blocoReceber").hidden = false;
     $("receber").disabled = false;
-    $("receber").textContent = "Tentar de novo";
+    marcar($("receber"), "res.tentar");
   }
 }
 
@@ -378,9 +380,9 @@ onmessage = (ev) => {
 };`;
 
 async function provaDeTrabalho() {
-  const rd = await fetch("/api/desafio");
+  const rd = await fetch("/api/desafio", { headers: { "X-Idioma": idioma } });
   const d = await rd.json();
-  if (!rd.ok) throw new Error(d.erro || "Tente de novo em instantes.");
+  if (!rd.ok) throw new Error(d.erro || t("res.desafio_falha"));
   const worker = new Worker(URL.createObjectURL(new Blob([POW_WORKER], { type: "text/javascript" })));
   const nonce = await new Promise((ok) => { worker.onmessage = (e) => ok(e.data); worker.postMessage(d); });
   worker.terminate();
@@ -390,16 +392,13 @@ async function provaDeTrabalho() {
 // ---------- compartilhar ----------
 // Convite com os dois jeitos de "jogar": criar e ganhar sats, ou atacar o site e roubar o pote.
 function convite(site) {
-  if (!INFO.recompensas) {
-    return ultimoArquivo ? `Criei esta arte com a Rede de Nós. Crie a sua: ${site}`
-      : `Transforme qualquer símbolo numa rede de nós de luz: ${site}`;
-  }
-  const pote = INFO.pote == null ? "" : ` de ${num(INFO.pote)} sats`;
+  if (!INFO.recompensas) return t(ultimoArquivo ? "conv.sem_pote_arte" : "conv.sem_pote", { site });
+  const pote = INFO.pote == null ? "" : t("conv.pote", { n: num(INFO.pote) });
   return [
-    ultimoArquivo ? "Criei esta arte e ganhei sats ⚡" : "Um site que paga sats para quem cria arte ⚡",
+    t(ultimoArquivo ? "conv.l1_arte" : "conv.l1"),
     "",
-    `🎨 Crie a sua e ganhe até ${INFO.limite_dia} sats por dia`,
-    `🏴‍☠️ Ou tente invadir e roubar o pote${pote}: o código é open source, quem achar uma falha leva um prêmio e deixa o ecossistema Bitcoin mais forte`,
+    t("conv.l2", { limite: INFO.limite_dia }),
+    t("conv.l3", { pote }),
     "",
     site,
   ].join("\n");  // cabe nos 280 caracteres do X (o link conta como 23)
@@ -433,16 +432,20 @@ function copiarArte() {
   return navigator.clipboard.write([new ClipboardItem({ "image/png": arteConvite.png })]);
 }
 
-async function abrirCompartilhar() {
+function textoConvite() {
   const site = siteAtual();
   const texto = convite(site);
   $("textoConvite").value = texto;
-  const t = encodeURIComponent(texto);
-  $("shareX").href = `https://x.com/intent/post?text=${t}`;
+  const cod = encodeURIComponent(texto);
+  $("shareX").href = `https://x.com/intent/post?text=${cod}`;
   $("shareTelegram").href = `https://t.me/share/url?url=${encodeURIComponent(site)}&text=${encodeURIComponent(texto.replace(site, "").trim())}`;
-  $("shareWhatsapp").href = `https://wa.me/?text=${t}`;
-  $("copiarConvite").textContent = "📋 Copiar convite";
-  $("copiarArte").textContent = "🖼️ Copiar a arte";
+  $("shareWhatsapp").href = `https://wa.me/?text=${cod}`;
+}
+
+async function abrirCompartilhar() {
+  textoConvite();
+  marcar($("copiarConvite"), "share.copiar");
+  marcar($("copiarArte"), "share.copiar_arte");
   $("avisoArte").hidden = true;
   $("arteNoConvite").hidden = true; $("compartilharArte").hidden = true; $("copiarArte").hidden = true;
   abrir("modalCompartilhar");
@@ -459,27 +462,27 @@ $("compartilhar").addEventListener("click", abrirCompartilhar);
 $("compartilharTopo").addEventListener("click", abrirCompartilhar);
 $("copiarConvite").addEventListener("click", async () => {
   const b = $("copiarConvite");
-  try { await navigator.clipboard.writeText($("textoConvite").value); b.textContent = "✅ Convite copiado"; }
-  catch (e) { $("textoConvite").select(); b.textContent = "Selecione o texto e copie"; }
+  try { await navigator.clipboard.writeText($("textoConvite").value); marcar(b, "share.copiado"); }
+  catch (e) { $("textoConvite").select(); marcar(b, "share.selecione"); }
 });
 $("copiarArte").addEventListener("click", () => {
-  copiarArte().then(() => { $("copiarArte").textContent = "✅ Arte copiada: cole no post"; },
-    () => { $("copiarArte").textContent = "Não deu para copiar a arte"; });
+  copiarArte().then(() => marcar($("copiarArte"), "share.arte_copiada"),
+    () => marcar($("copiarArte"), "share.arte_falha"));
 });
 $("compartilharArte").addEventListener("click", async () => {
   try {
-    await navigator.share({ files: [arteConvite.jpg], text: $("textoConvite").value, title: "Rede de Nós" });
+    await navigator.share({ files: [arteConvite.jpg], text: $("textoConvite").value, title: t("marca") });
     fechar("modalCompartilhar");
   } catch (e) {}
 });
 document.querySelectorAll("#modalCompartilhar .rede").forEach((a) => a.addEventListener("click", () => {
   // o link abre normalmente; antes, a arte vai para a área de transferência
   copiarArte().then(() => {
-    $("avisoArte").textContent = "🖼️ A arte foi copiada. No post, cole com ⌘V (Mac) ou Ctrl+V antes de publicar.";
+    marcar($("avisoArte"), "share.aviso_colar");
     $("avisoArte").hidden = false;
   }, () => {
     if (!arteConvite) return;
-    $("avisoArte").textContent = "Anexe a arte que você baixou ao post.";
+    marcar($("avisoArte"), "share.aviso_anexe");
     $("avisoArte").hidden = false;
   });
 }));
@@ -487,8 +490,9 @@ document.querySelectorAll("#modalCompartilhar .rede").forEach((a) => a.addEventL
 // ---------- GitHub e bug bounty ----------
 function configurarLinks() {
   document.querySelectorAll("a.github").forEach((a) => {
-    if (INFO.repo_url) { a.href = INFO.repo_url; a.removeAttribute("aria-disabled"); a.title = "Código no GitHub"; }
-    else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.title = "Código no GitHub (em breve)"; }
+    if (INFO.repo_url) { a.href = INFO.repo_url; a.removeAttribute("aria-disabled"); a.setAttribute("data-i18n-title", "gh.titulo"); }
+    else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.setAttribute("data-i18n-title", "gh.breve"); }
+    aplicarEm(a);
   });
   const email = INFO.bounty_email || "";
   $("bountyEmail").textContent = email;
@@ -512,13 +516,14 @@ function configurarReport() {
   for (const [chave, rotulo] of tipos) {
     const b = Object.assign(document.createElement("button"), { textContent: rotulo, type: "button" });
     b.dataset.tipo = chave;
+    if (temTexto("rep." + chave)) marcar(b, "rep." + chave);  // o rótulo do servidor fica de reserva
     b.addEventListener("click", () => b.classList.toggle("on"));
     box.append(b);
   }
 }
 function abrirReport() {
   $("reportErro").hidden = !ultimoErro;
-  $("reportErro").textContent = ultimoErro ? `Vamos mandar junto o último erro que apareceu: "${ultimoErro}"` : "";
+  if (ultimoErro) marcar($("reportErro"), "report.erro_junto", { erro: ultimoErro }); else escrever($("reportErro"), "");
   mensagem($("msgReport"), "");
   $("enviarReport").disabled = false;
   abrir("modalReport");
@@ -528,25 +533,25 @@ $("enviarReport").addEventListener("click", async () => {
   const tipos = [...$("reportTipos").querySelectorAll("button.on")].map((b) => b.dataset.tipo);
   const texto = $("reportTexto").value.trim();
   if (!tipos.length && !texto) {
-    $("msgReport").className = "msg erro"; $("msgReport").textContent = "Marque o que aconteceu ou escreva uma mensagem.";
+    mensagem($("msgReport"), K("report.marque"), "erro");
     return;
   }
   const b = $("enviarReport");
   b.disabled = true;
-  mensagem($("msgReport"), "Enviando…");
+  mensagem($("msgReport"), K("report.enviando"));
   try {
     const r = await postJSON("/api/reportar", {
       tipos, mensagem: texto, contato: $("reportContato").value.trim(), erro: ultimoErro,
       retrato: estado.retrato, tela: `${innerWidth}x${innerHeight}`,
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.erro || "Não consegui enviar agora. Tente de novo.");
+    if (!r.ok) throw new Error(j.erro || t("report.falha"));
     $("reportTexto").value = "";
     $("reportTipos").querySelectorAll("button.on").forEach((x) => x.classList.remove("on"));
-    mensagem($("msgReport"), "Recebido, obrigado! 🙏 Vamos olhar o quanto antes.", "sucesso");
+    mensagem($("msgReport"), K("report.ok"), "sucesso");
   } catch (e) {
     // o erro do próprio envio não deve virar o "último erro" do próximo relato
-    $("msgReport").className = "msg erro"; $("msgReport").textContent = e.message;
+    $("msgReport").className = "msg erro"; escrever($("msgReport"), e.message);
     b.disabled = false;
   }
 });
@@ -569,7 +574,7 @@ const telasLogo = [...document.querySelectorAll("#modalLogo [data-tela]")];
 let telaLogo = 0;
 telasLogo.forEach((_, i) => {
   const b = document.createElement("button");
-  b.setAttribute("aria-label", `Passo ${i + 1}`);
+  b.dataset.i18nVars = JSON.stringify({ n: i + 1 }); b.setAttribute("data-i18n-aria-label", "logo.passo");
   b.addEventListener("click", () => mostrarTelaLogo(i));
   $("pontosLogo").appendChild(b);
 });
@@ -578,7 +583,7 @@ function mostrarTelaLogo(i) {
   telasLogo.forEach((t, j) => { t.hidden = j !== i; });
   [...$("pontosLogo").children].forEach((b, j) => b.classList.toggle("on", j === i));
   $("logoVoltar").disabled = i === 0;
-  $("logoAvancar").textContent = i === telasLogo.length - 1 ? "Entendi" : "Próximo";
+  marcar($("logoAvancar"), i === telasLogo.length - 1 ? "logo.entendi" : "logo.prox");
 }
 document.querySelectorAll("[data-tutorial-logo]").forEach((b) => b.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -606,7 +611,7 @@ $("abrirDoar2").addEventListener("click", abrirDoar);
 async function gerarDoacao(sats) {
   if (!(sats >= 1)) return;
   clearInterval(pollDoacao);
-  mensagem($("msgDoar"), "Gerando cobrança…");
+  mensagem($("msgDoar"), K("doar.gerando"));
   try {
     const r = await postJSON("/api/doar", { sats });
     const j = await r.json();
@@ -616,7 +621,7 @@ async function gerarDoacao(sats) {
     $("abrirCarteira").href = "lightning:" + j.bolt11;
     $("doarInvoice").hidden = false;
     $("doarEndereco").hidden = true;  // um QR por vez, para não confundir
-    mensagem($("msgDoar"), `Aguardando o pagamento de ${num(sats)} sats…`);
+    mensagem($("msgDoar"), K("doar.aguardando", { n: num(sats) }));
     let tentativas = 0;
     pollDoacao = setInterval(async () => {
       if (++tentativas > 120) { clearInterval(pollDoacao); return; }
@@ -625,7 +630,7 @@ async function gerarDoacao(sats) {
         if (s.pago) {
           clearInterval(pollDoacao);
           $("doarInvoice").hidden = true;
-          mensagem($("msgDoar"), `Obrigado! ⚡ ${num(sats)} sats entraram no pote.`, "sucesso");
+          mensagem($("msgDoar"), K("doar.obrigado", { n: num(sats) }), "sucesso");
           chuvaDeSats(10);
           carregarInfo();
         }
@@ -636,12 +641,21 @@ async function gerarDoacao(sats) {
 document.querySelectorAll("[data-doar]").forEach((b) => b.addEventListener("click", () => gerarDoacao(parseInt(b.dataset.doar))));
 $("doarOutroBtn").addEventListener("click", () => gerarDoacao(parseInt($("doarOutro").value)));
 document.querySelectorAll("[data-copiar]").forEach((b) => b.addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($(b.dataset.copiar).textContent); b.textContent = "Copiado!"; }
-  catch (e) { b.textContent = "Selecione e copie"; }
-  setTimeout(() => (b.textContent = "Copiar"), 1500);
+  try { await navigator.clipboard.writeText($(b.dataset.copiar).textContent); marcar(b, "doar.copiado"); }
+  catch (e) { marcar(b, "doar.selecione"); }
+  setTimeout(() => marcar(b, "doar.copiar"), 1500);
 }));
 
+// ---------- idioma ----------
+function trocarIdioma(l) {
+  guardar("idioma", l); definirIdioma(l);
+  textosInfo(); atualizarBotao();
+  if (!$("modalCompartilhar").hidden) textoConvite();
+}
+document.querySelectorAll("[data-idioma]").forEach((b) => b.addEventListener("click", () => trocarIdioma(b.dataset.idioma)));
+
 // ---------- início ----------
+definirIdioma(idioma);
 sincronizar();
 carregarInfo().then(() => { if (!guardado("viu-tutorial", false)) abrir("tutorial"); });
 renderizar();

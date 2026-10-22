@@ -19,6 +19,13 @@
   .topo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
   h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
   h1 span { color: var(--accent); }
+  h1 span.t { color: inherit; }
+  .topo .dir { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .idiomas { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 20px; background: #0f0d0d; }
+  .idiomas button { padding: 2px 9px; border: 0; border-radius: 16px; background: none; color: var(--muted); font-size: 11px;
+    font-weight: 700; letter-spacing: .06em; }
+  .idiomas button:hover:not(:disabled) { color: var(--text); }
+  .idiomas button.on { background: var(--accent-soft); color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--accent); }
   button, select, input[type=text], input[type=number] {
     font: inherit; color: var(--text); background: #1f1c1b; border: 1px solid var(--line);
     border-radius: 9px; padding: 8px 10px; }
@@ -82,6 +89,7 @@
   .row { margin: 10px 0; }
   .row label { display: flex; justify-content: space-between; color: var(--muted); font-size: 12.5px; margin-bottom: 4px; }
   .row label span { color: var(--text); font-variant-numeric: tabular-nums; }
+  .row label span.t { color: inherit; font-variant-numeric: normal; }
   input[type=range] { width: 100%; accent-color: var(--accent); }
   .check { display: flex; align-items: center; gap: 8px; margin: 10px 0; cursor: pointer; }
   .check input { accent-color: var(--accent); width: 16px; height: 16px; }
@@ -260,13 +268,18 @@
 <div class="app">
   <aside>
     <div class="topo">
-      <h1><span>⚡</span> Rede de Nós</h1>
-      <button class="link" id="abrirTutorial">Como funciona?</button>
+      <h1><span>⚡</span> <span class="t" data-i18n="marca">Rede de Nós</span></h1>
+      <div class="dir">
+        <div class="idiomas" role="group" aria-label="Idioma" data-i18n-aria-label="idioma.grupo">
+          <button data-idioma="pt" lang="pt" title="Português">PT</button><button data-idioma="en" lang="en" title="English">EN</button><button data-idioma="de" lang="de" title="Deutsch">DE</button>
+        </div>
+        <button class="link" id="abrirTutorial" data-i18n="topo.como">Como funciona?</button>
+      </div>
     </div>
     <div class="atalhos">
-      <button class="link" id="abrirBounty2">🐞 Bug bounty</button>
-      <button class="link" id="abrirReport2" hidden>🛟 Reportar problema</button>
-      <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+      <button class="link" id="abrirBounty2" data-i18n="bounty.btn">🐞 Bug bounty</button>
+      <button class="link" id="abrirReport2" hidden data-i18n="report.btn">🛟 Reportar problema</button>
+      <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub" data-i18n-title="gh.titulo" data-i18n-aria-label="gh.titulo"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     </div>
 
     <div id="blocoGanhe" hidden>
@@ -280,98 +293,98 @@
           <span id="txtProgresso">Hoje você ganhou 0 de 21 sats</span>
         </div>
       </div>
-      <div class="pote-linha">Pote coletivo: <b id="poteSaldo">…</b> · <button class="link" id="abrirDoar">doar sats ⚡</button></div>
+      <div class="pote-linha"><span data-i18n="pote.rotulo">Pote coletivo:</span> <b id="poteSaldo">…</b> · <button class="link" id="abrirDoar" data-i18n="pote.doar">doar sats ⚡</button></div>
     </div>
-    <div class="apoie" id="blocoApoie" hidden>Gostou? Apoie o projeto <button class="link" id="abrirDoar2">doar ⚡</button></div>
+    <div class="apoie" id="blocoApoie" hidden><span data-i18n="apoie.txt">Gostou? Apoie o projeto</span> <button class="link" id="abrirDoar2" data-i18n="apoie.doar">doar ⚡</button></div>
     <div class="desafio" id="desafio">
-      <button class="roubar" id="abrirBounty3" hidden>🏴‍☠️ Tente roubar o pote</button>
-      <button class="chamar" id="compartilharTopo">📣 Desafiar amigos</button>
+      <button class="roubar" id="abrirBounty3" hidden data-i18n="desafio.roubar">🏴‍☠️ Tente roubar o pote</button>
+      <button class="chamar" id="compartilharTopo" data-i18n="desafio.chamar">📣 Desafiar amigos</button>
     </div>
 
     <section class="passo">
-      <h2><span class="num">1</span> Escolha o símbolo</h2>
+      <h2><span class="num">1</span> <span data-i18n="p1.titulo">Escolha o símbolo</span></h2>
       <div class="presets">
-        <button data-fonte="sat">Sat (exemplo)</button>
-        <button data-fonte="imagem" disabled>Sua imagem</button>
+        <button data-fonte="sat" data-i18n="p1.sat">Sat (exemplo)</button>
+        <button data-fonte="imagem" disabled data-i18n="p1.imagem">Sua imagem</button>
       </div>
       <div class="drop" id="drop">
         <img id="thumb" hidden alt="">
-        <div id="dropTxt">Use qualquer logo: <b>arraste</b>, <b>cole um print</b> (Ctrl/⌘+V) ou <b>clique</b> para escolher</div>
+        <div id="dropTxt" data-i18n-html="p1.drop">Use qualquer logo: <b>arraste</b>, <b>cole um print</b> (Ctrl/⌘+V) ou <b>clique</b> para escolher</div>
       </div>
       <input type="file" id="file" accept="image/*" hidden>
-      <div class="ajuda-logo"><span>Funciona melhor com logo preto e branco</span><button class="link" data-tutorial-logo="0">Como usar sua logo?</button></div>
+      <div class="ajuda-logo"><span data-i18n="p1.ajuda">Funciona melhor com logo preto e branco</span><button class="link" data-tutorial-logo="0" data-i18n="p1.como_logo">Como usar sua logo?</button></div>
       <div id="imgopts" hidden>
-        <div class="shape"><img id="shape" alt="forma detectada"><div>Assim entendemos sua imagem. Se veio errado, ajuste abaixo ou <button class="link" data-tutorial-logo="3">veja que imagens funcionam melhor</button>.</div></div>
-        <div class="row"><label>Sensibilidade <span id="v-limiar"></span></label>
+        <div class="shape"><img id="shape" alt="forma detectada" data-i18n-alt="p1.forma_alt"><div><span data-i18n="p1.forma_a">Assim entendemos sua imagem. Se veio errado, ajuste abaixo ou</span> <button class="link" data-tutorial-logo="3" data-i18n="p1.forma_b">veja que imagens funcionam melhor</button>.</div></div>
+        <div class="row"><label><span class="t" data-i18n="p1.sensib">Sensibilidade</span> <span id="v-limiar"></span></label>
           <input type="range" id="limiar" min="5" max="200" step="1"></div>
-        <label class="check"><input type="checkbox" id="inverter"> Inverter (símbolo escuro ↔ claro)</label>
+        <label class="check"><input type="checkbox" id="inverter"> <span data-i18n="p1.inverter">Inverter (símbolo escuro ↔ claro)</span></label>
       </div>
     </section>
 
     <section class="passo">
-      <h2><span class="num">2</span> Deixe do seu jeito</h2>
-      <div class="row" style="margin-top:0"><label>Formato</label>
+      <h2><span class="num">2</span> <span data-i18n="p2.titulo">Deixe do seu jeito</span></h2>
+      <div class="row" style="margin-top:0"><label data-i18n="p2.formato">Formato</label>
         <div class="presets formato">
-          <button data-formato="paisagem">🖥️ Deitada <small>computador</small></button>
-          <button data-formato="retrato">📱 Em pé <small>celular</small></button>
+          <button data-formato="paisagem" data-i18n-html="p2.paisagem">🖥️ Deitada <small>computador</small></button>
+          <button data-formato="retrato" data-i18n-html="p2.retrato">📱 Em pé <small>celular</small></button>
         </div>
       </div>
-      <div class="row"><label>Cor</label>
+      <div class="row"><label data-i18n="p2.cor">Cor</label>
         <div class="cores" id="cores">
-          <label class="outra" title="Escolher outra cor">🎨<input type="color" id="cor"></label>
+          <label class="outra" title="Escolher outra cor" data-i18n-title="p2.outra_cor">🎨<input type="color" id="cor"></label>
         </div>
       </div>
       <div id="sliders-basico"></div>
       <div class="inline">
-        <button id="sortear">🎲 Nova variação</button>
-        <label class="check" style="margin:0;justify-content:center"><input type="checkbox" id="circulo"> Círculo</label>
+        <button id="sortear" data-i18n="p2.sortear">🎲 Nova variação</button>
+        <label class="check" style="margin:0;justify-content:center"><input type="checkbox" id="circulo"> <span data-i18n="p2.circulo">Círculo</span></label>
       </div>
       <details>
-        <summary>Mais ajustes</summary>
+        <summary data-i18n="p2.mais">Mais ajustes</summary>
         <div id="sliders-avancado"></div>
-        <div class="row"><label>Semente (cada número é uma rede diferente)</label><input type="number" id="seed" step="1" style="width:100%"></div>
-        <div class="row"><label>Resolução</label><select id="largura" style="width:100%"></select></div>
-        <div class="row"><label>Nome do arquivo</label><input type="text" id="nome" placeholder="opcional"></div>
-        <div class="row"><button id="reset" class="wide">Restaurar padrões</button></div>
+        <div class="row"><label data-i18n="p2.semente">Semente (cada número é uma rede diferente)</label><input type="number" id="seed" step="1" style="width:100%"></div>
+        <div class="row"><label data-i18n="p2.resolucao">Resolução</label><select id="largura" style="width:100%"></select></div>
+        <div class="row"><label data-i18n="p2.nome">Nome do arquivo</label><input type="text" id="nome" placeholder="opcional" data-i18n-placeholder="p2.nome_ph"></div>
+        <div class="row"><button id="reset" class="wide" data-i18n="p2.reset">Restaurar padrões</button></div>
       </details>
     </section>
 
     <section class="passo">
-      <h2><span class="num">3</span> <span id="tituloPasso3">Baixe sua arte</span></h2>
+      <h2><span class="num">3</span> <span id="tituloPasso3" data-i18n="p3.titulo">Baixe sua arte</span></h2>
       <div id="blocoEndereco" hidden>
-        <div class="row" style="margin-top:0"><label>Seu endereço Lightning, para receber os sats</label>
-          <input type="text" id="ln" placeholder="voce@carteira.com" autocomplete="off" spellcheck="false" inputmode="email"></div>
-        <div class="hint" id="hintLn">Funciona com Coinos, Wallet of Satoshi, Blink, Alby e outras carteiras Lightning.</div>
+        <div class="row" style="margin-top:0"><label data-i18n="p3.endereco">Seu endereço Lightning, para receber os sats</label>
+          <input type="text" id="ln" placeholder="voce@carteira.com" data-i18n-placeholder="p3.ph" autocomplete="off" spellcheck="false" inputmode="email"></div>
+        <div class="hint" id="hintLn" data-i18n="p3.hint">Funciona com Coinos, Wallet of Satoshi, Blink, Alby e outras carteiras Lightning.</div>
       </div>
       <div class="row"><button class="primary" id="exportar">Baixar arte</button></div>
       <div class="msg" id="msgExport"></div>
 
       <div class="card" id="cartao" hidden>
-        <div class="grande" id="resultado">Arte baixada! 🎉</div>
+        <div class="grande" id="resultado" data-i18n="res.baixada">Arte baixada! 🎉</div>
         <div class="msg" id="msgResgate" style="margin-top:0"></div>
-        <div class="row" id="blocoReceber" hidden><button class="primary" id="receber">Receber sats ⚡</button></div>
-        <div class="row"><button class="wide" id="compartilhar">📣 Compartilhar e desafiar amigos</button></div>
-        <div class="hint"><a href="#" id="baixarDeNovo">Baixar de novo</a><span id="reportCartao" hidden> · <button class="link" id="abrirReport3">Algo deu errado? Avise</button></span></div>
+        <div class="row" id="blocoReceber" hidden><button class="primary" id="receber" data-i18n="res.receber">Receber sats ⚡</button></div>
+        <div class="row"><button class="wide" id="compartilhar" data-i18n="share.btn">📣 Compartilhar e desafiar amigos</button></div>
+        <div class="hint"><a href="#" id="baixarDeNovo" data-i18n="baixar.novo">Baixar de novo</a><span id="reportCartao" hidden> · <button class="link" id="abrirReport3" data-i18n="report.avise">Algo deu errado? Avise</button></span></div>
       </div>
     </section>
   </aside>
 
   <main>
     <div class="cantos">
-      <button class="bug" id="abrirBounty">🐞 Bug bounty</button>
-      <button id="abrirReport" hidden>🛟 Reportar problema</button>
-      <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+      <button class="bug" id="abrirBounty" data-i18n="bounty.btn">🐞 Bug bounty</button>
+      <button id="abrirReport" hidden data-i18n="report.btn">🛟 Reportar problema</button>
+      <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub" data-i18n-title="gh.titulo" data-i18n-aria-label="gh.titulo"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
     </div>
-    <img id="preview" alt="Prévia da arte" hidden>
-    <div class="status" id="status">Carregando…</div>
-    <div class="dica" id="dica">Sua arte aparece aqui e muda na hora conforme você ajusta ←</div>
+    <img id="preview" alt="Prévia da arte" data-i18n-alt="previa.alt" hidden>
+    <div class="status" id="status" data-i18n="status.carregando">Carregando…</div>
+    <div class="dica" id="dica" data-i18n="dica">Sua arte aparece aqui e muda na hora conforme você ajusta ←</div>
   </main>
 </div>
 
 <!-- tutorial -->
 <div class="modal" id="tutorial" hidden>
   <div class="box">
-    <button class="fechar" data-fechar="tutorial" aria-label="Fechar">✕</button>
+    <button class="fechar" data-fechar="tutorial" aria-label="Fechar" data-i18n-aria-label="fechar">✕</button>
     <svg class="demo" viewBox="0 0 120 80" aria-hidden="true">
       <line x1="20" y1="40" x2="45" y2="18"/><line x1="45" y1="18" x2="75" y2="20"/><line x1="75" y1="20" x2="100" y2="42"/>
       <line x1="100" y1="42" x2="76" y2="64"/><line x1="76" y1="64" x2="44" y2="62"/><line x1="44" y1="62" x2="20" y2="40"/>
@@ -379,16 +392,16 @@
       <circle cx="20" cy="40" r="2.6"/><circle cx="45" cy="18" r="2.6"/><circle cx="75" cy="20" r="2.6"/><circle cx="100" cy="42" r="2.6"/>
       <circle cx="76" cy="64" r="2.6"/><circle cx="44" cy="62" r="2.6"/><circle cx="60" cy="40" r="3.4"/>
     </svg>
-    <h3 id="tutTitulo">Crie arte e ganhe sats ⚡</h3>
+    <h3 id="tutTitulo" data-i18n="tut.titulo">Crie arte e ganhe sats ⚡</h3>
     <ol class="etapas">
-      <li><div class="ico">🎨</div><div><b>Escolha um símbolo</b><span>Use o exemplo ou cole o print de qualquer logo, de preferência em preto e branco.</span></div></li>
-      <li><div class="ico">✨</div><div><b>Deixe do seu jeito</b><span>Troque a cor, o tamanho e sorteie variações. A prévia muda na hora.</span></div></li>
-      <li id="tutGanhe"><div class="ico">⚡</div><div><b>Baixe e ganhe sats</b><span id="tutGanheTxt">Coloque seu endereço Lightning e receba na hora.</span></div></li>
-      <li><div class="ico">📣</div><div><b>Compartilhe</b><span>Mostre sua arte e desafie os amigos: criar e ganhar sats, ou tentar roubar o pote.</span></div></li>
+      <li><div class="ico">🎨</div><div><b data-i18n="tut.1t">Escolha um símbolo</b><span data-i18n="tut.1d">Use o exemplo ou cole o print de qualquer logo, de preferência em preto e branco.</span></div></li>
+      <li><div class="ico">✨</div><div><b data-i18n="tut.2t">Deixe do seu jeito</b><span data-i18n="tut.2d">Troque a cor, o tamanho e sorteie variações. A prévia muda na hora.</span></div></li>
+      <li id="tutGanhe"><div class="ico">⚡</div><div><b data-i18n="tut.3t">Baixe e ganhe sats</b><span id="tutGanheTxt" data-i18n="tut.3d">Coloque seu endereço Lightning e receba na hora.</span></div></li>
+      <li><div class="ico">📣</div><div><b data-i18n="tut.4t">Compartilhe</b><span data-i18n="tut.4d">Mostre sua arte e desafie os amigos: criar e ganhar sats, ou tentar roubar o pote.</span></div></li>
     </ol>
     <div class="nav-logo">
-      <button id="comecar">Pular</button>
-      <button class="primary" data-tutorial-logo="0">Próximo: sua logo →</button>
+      <button id="comecar" data-i18n="tut.pular">Pular</button>
+      <button class="primary" data-tutorial-logo="0" data-i18n="tut.proximo">Próximo: sua logo →</button>
     </div>
   </div>
 </div>
@@ -409,13 +422,13 @@
 </svg>
 <div class="modal" id="modalLogo" hidden>
   <div class="box">
-    <button class="fechar" data-fechar="modalLogo" aria-label="Fechar">✕</button>
-    <h3>Como usar sua logo</h3>
+    <button class="fechar" data-fechar="modalLogo" aria-label="Fechar" data-i18n-aria-label="fechar">✕</button>
+    <h3 data-i18n="logo.titulo">Como usar sua logo</h3>
 
     <div class="tela" data-tela="0">
       <svg class="cena" viewBox="0 0 300 150" aria-hidden="true">
         <rect class="alvo" x="170" y="22" width="112" height="106" rx="10"/>
-        <text x="226" y="118" text-anchor="middle" font-size="9" fill="#9a8f88">solte aqui</text>
+        <text x="226" y="118" text-anchor="middle" font-size="9" fill="#9a8f88" data-i18n="l0.alvo">solte aqui</text>
         <g class="solto">
           <rect x="204" y="38" width="44" height="54" rx="5" fill="#fff"/>
           <use href="#raioLogo" x="212" y="44" width="28" height="40" fill="#111"/>
@@ -428,29 +441,29 @@
           <path d="M76 92 l0 22 l6 -5 l4 9 l4 -2 l-4 -9 l8 0 z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
         </g>
       </svg>
-      <p><b>1. Arraste a logo até o quadro tracejado</b> do passo 1.</p>
-      <p>No celular, toque no quadro e escolha da galeria. No computador também dá para colar um print com <b>Ctrl/⌘+V</b>.</p>
+      <p data-i18n-html="l0.p1"><b>1. Arraste a logo até o quadro tracejado</b> do passo 1.</p>
+      <p data-i18n-html="l0.p2">No celular, toque no quadro e escolha da galeria. No computador também dá para colar um print com <b>Ctrl/⌘+V</b>.</p>
     </div>
 
     <div class="tela" data-tela="1" hidden>
       <svg class="cena" viewBox="0 0 300 150" aria-hidden="true">
         <rect x="22" y="18" width="96" height="96" rx="8" fill="#fff"/>
         <use href="#raioLogo" x="44" y="28" width="52" height="76" fill="#111"/>
-        <text x="70" y="134" text-anchor="middle" font-size="10" fill="#9a8f88">sua logo</text>
+        <text x="70" y="134" text-anchor="middle" font-size="10" fill="#9a8f88" data-i18n="l1.suas">sua logo</text>
         <path d="M136 66 h26 m-7 -7 l7 7 l-7 7" stroke="#ff6600" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
         <g class="errado">
           <rect x="182" y="18" width="96" height="96" rx="8" fill="#f0f0f0"/>
           <use href="#raioLogo" x="204" y="28" width="52" height="76" fill="#141414"/>
-          <text x="230" y="134" text-anchor="middle" font-size="10" fill="#ff8a7a">✗ ficou ao contrário</text>
+          <text x="230" y="134" text-anchor="middle" font-size="10" fill="#ff8a7a" data-i18n="l1.errado">✗ ficou ao contrário</text>
         </g>
         <g class="certo">
           <rect x="182" y="18" width="96" height="96" rx="8" fill="#141414" stroke="#2a2625"/>
           <use href="#raioLogo" x="204" y="28" width="52" height="76" fill="#f0f0f0"/>
-          <text x="230" y="134" text-anchor="middle" font-size="10" fill="#7fd18b">✓ símbolo em branco</text>
+          <text x="230" y="134" text-anchor="middle" font-size="10" fill="#7fd18b" data-i18n="l1.certo">✓ símbolo em branco</text>
         </g>
       </svg>
-      <p><b>2. Confira a forma detectada.</b> O símbolo tem que aparecer <b>branco</b> no fundo escuro.</p>
-      <p>Saiu ao contrário? Marque <b>Inverter</b>. Faltou pedaço ou entrou sujeira? Mexa na <b>Sensibilidade</b>.</p>
+      <p data-i18n-html="l1.p1"><b>2. Confira a forma detectada.</b> O símbolo tem que aparecer <b>branco</b> no fundo escuro.</p>
+      <p data-i18n-html="l1.p2">Saiu ao contrário? Marque <b>Inverter</b>. Faltou pedaço ou entrou sujeira? Mexa na <b>Sensibilidade</b>.</p>
     </div>
 
     <div class="tela" data-tela="2" hidden>
@@ -475,34 +488,34 @@
         <circle cx="122" cy="136" r="7" fill="#ff6600"/><circle cx="150" cy="136" r="7" fill="#2fb4ff"/><circle cx="178" cy="136" r="7" fill="#21d39b"/>
         <circle class="anel a1" cx="122" cy="136" r="10.5"/><circle class="anel a2" cx="150" cy="136" r="10.5"/><circle class="anel a3" cx="178" cy="136" r="10.5"/>
       </svg>
-      <p><b>3. Deixe do seu jeito.</b> A logo vira o vazio no meio da rede de nós.</p>
-      <p>Troque a cor, mude o tamanho e aperte <b>🎲 Nova variação</b> até gostar. A prévia muda na hora.</p>
+      <p data-i18n-html="l2.p1"><b>3. Deixe do seu jeito.</b> A logo vira o vazio no meio da rede de nós.</p>
+      <p data-i18n-html="l2.p2">Troque a cor, mude o tamanho e aperte <b>🎲 Nova variação</b> até gostar. A prévia muda na hora.</p>
     </div>
 
     <div class="tela" data-tela="3" hidden>
-      <p style="margin-top:0"><b>Que imagem funciona melhor?</b> O app separa a logo do fundo pelo <b>claro e escuro</b>, não pelas cores. Quanto mais contraste, melhor.</p>
+      <p style="margin-top:0" data-i18n-html="l3.p1"><b>Que imagem funciona melhor?</b> O app separa a logo do fundo pelo <b>claro e escuro</b>, não pelas cores. Quanto mais contraste, melhor.</p>
       <div class="exemplos">
         <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#111"/></svg>
-          <figcaption><b>✓ Preto e branco</b>o ideal</figcaption></figure>
+          <figcaption data-i18n-html="l3.ex1"><b>✓ Preto e branco</b>o ideal</figcaption></figure>
         <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#xadrez)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#111"/></svg>
-          <figcaption><b>✓ PNG sem fundo</b>transparente</figcaption></figure>
+          <figcaption data-i18n-html="l3.ex2"><b>✓ PNG sem fundo</b>transparente</figcaption></figure>
         <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#111"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#fff"/></svg>
-          <figcaption><b>✓ Branco no preto</b>também vale</figcaption></figure>
+          <figcaption data-i18n-html="l3.ex3"><b>✓ Branco no preto</b>também vale</figcaption></figure>
         <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="url(#multicor)"/></svg>
-          <figcaption><b>✗ Muitas cores</b>partes claras somem</figcaption></figure>
+          <figcaption data-i18n-html="l3.ex4"><b>✗ Muitas cores</b>partes claras somem</figcaption></figure>
         <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#degrade)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#333"/></svg>
-          <figcaption><b>✗ Foto ou degradê</b>o fundo vira forma</figcaption></figure>
+          <figcaption data-i18n-html="l3.ex5"><b>✗ Foto ou degradê</b>o fundo vira forma</figcaption></figure>
         <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#eee"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#cfcfcf"/></svg>
-          <figcaption><b>✗ Tom parecido</b>com o fundo</figcaption></figure>
+          <figcaption data-i18n-html="l3.ex6"><b>✗ Tom parecido</b>com o fundo</figcaption></figure>
       </div>
-      <p>💡 <b>Logo colorida?</b> Procure a versão de uma cor só (pesquise "nome da marca logo preto e branco") ou passe um filtro preto e branco com bastante contraste antes de enviar. Evite também texto miúdo e linhas muito finas.</p>
-      <div class="aviso-logo">Por enquanto o app não diferencia cores. Estamos trabalhando para ele reconhecer logos coloridas.</div>
+      <p data-i18n-html="l3.p2">💡 <b>Logo colorida?</b> Procure a versão de uma cor só (pesquise "nome da marca logo preto e branco") ou passe um filtro preto e branco com bastante contraste antes de enviar. Evite também texto miúdo e linhas muito finas.</p>
+      <div class="aviso-logo" data-i18n="l3.aviso">Por enquanto o app não diferencia cores. Estamos trabalhando para ele reconhecer logos coloridas.</div>
     </div>
 
     <div class="pontos" id="pontosLogo"></div>
     <div class="nav-logo">
-      <button id="logoVoltar">Voltar</button>
-      <button class="primary" id="logoAvancar">Próximo</button>
+      <button id="logoVoltar" data-i18n="logo.voltar">Voltar</button>
+      <button class="primary" id="logoAvancar" data-i18n="logo.prox">Próximo</button>
     </div>
   </div>
 </div>
@@ -510,32 +523,32 @@
 <!-- bug bounty -->
 <div class="modal" id="modalBounty" hidden>
   <div class="box">
-    <button class="fechar" data-fechar="modalBounty" aria-label="Fechar">✕</button>
-    <h3>🐞 Bug bounty: pode atacar</h3>
-    <div class="hint">Este projeto é open source e roda de propósito com pouco dinheiro no pote. Ataques são bem-vindos: é assim que ele fica seguro.</div>
-    <p class="destaque">Conseguiu esvaziar o pote? Fique com <b id="bountyPct">70%</b> do que pegou.</p>
+    <button class="fechar" data-fechar="modalBounty" aria-label="Fechar" data-i18n-aria-label="fechar">✕</button>
+    <h3 data-i18n="bounty.titulo">🐞 Bug bounty: pode atacar</h3>
+    <div class="hint" data-i18n="bounty.hint">Este projeto é open source e roda de propósito com pouco dinheiro no pote. Ataques são bem-vindos: é assim que ele fica seguro.</div>
+    <p class="destaque"><span data-i18n="bounty.d1">Conseguiu esvaziar o pote? Fique com</span> <b id="bountyPct">70%</b> <span data-i18n="bounty.d2">do que pegou.</span></p>
     <ol class="regras">
-      <li>Mande um e-mail para <a id="bountyEmail" href="#"></a> explicando como fez (passo a passo, se puder).</li>
-      <li>Devolva o restante para o endereço de doação do pote, para o projeto continuar pagando outras pessoas.</li>
-      <li>Achou uma falha sem conseguir tirar sats? Mande também: entra nos créditos do projeto.</li>
+      <li><span data-i18n="bounty.r1a">Mande um e-mail para</span> <a id="bountyEmail" href="#"></a> <span data-i18n="bounty.r1b">explicando como fez (passo a passo, se puder).</span></li>
+      <li data-i18n="bounty.r2">Devolva o restante para o endereço de doação do pote, para o projeto continuar pagando outras pessoas.</li>
+      <li data-i18n="bounty.r3">Achou uma falha sem conseguir tirar sats? Mande também: entra nos créditos do projeto.</li>
     </ol>
-    <div class="hint"><b>Fora do escopo:</b> atacar a Coinos, carteiras ou serviços de terceiros, outros visitantes, a hospedagem ou a rede (DDoS volumétrico), e engenharia social. Vale só esta instância e este pote.</div>
-    <div class="row" id="bountyRepo" hidden><a href="#" target="_blank" rel="noopener" style="color:var(--accent-2)">Regras completas (SECURITY.md)</a></div>
+    <div class="hint" data-i18n-html="bounty.fora"><b>Fora do escopo:</b> atacar a Coinos, carteiras ou serviços de terceiros, outros visitantes, a hospedagem ou a rede (DDoS volumétrico), e engenharia social. Vale só esta instância e este pote.</div>
+    <div class="row" id="bountyRepo" hidden><a href="#" target="_blank" rel="noopener" style="color:var(--accent-2)" data-i18n="bounty.regras">Regras completas (SECURITY.md)</a></div>
   </div>
 </div>
 
 <!-- reportar problema -->
 <div class="modal" id="modalReport" hidden>
   <div class="box">
-    <button class="fechar" data-fechar="modalReport" aria-label="Fechar">✕</button>
-    <h3>🛟 Reportar um problema</h3>
-    <div class="hint">Conte o que aconteceu. A mensagem vai direto para quem cuida do site.</div>
+    <button class="fechar" data-fechar="modalReport" aria-label="Fechar" data-i18n-aria-label="fechar">✕</button>
+    <h3 data-i18n="report.titulo">🛟 Reportar um problema</h3>
+    <div class="hint" data-i18n="report.hint">Conte o que aconteceu. A mensagem vai direto para quem cuida do site.</div>
     <div class="presets" id="reportTipos"></div>
-    <textarea id="reportTexto" rows="4" maxlength="1000" placeholder="Detalhes (opcional se você marcou acima)"></textarea>
+    <textarea id="reportTexto" rows="4" maxlength="1000" placeholder="Detalhes (opcional se você marcou acima)" data-i18n-placeholder="report.ph_texto"></textarea>
     <div class="row"><input type="text" id="reportContato" maxlength="120" autocomplete="off"
-      placeholder="Contato para resposta (opcional): @telegram, e-mail…"></div>
+      placeholder="Contato para resposta (opcional): @telegram, e-mail…" data-i18n-placeholder="report.ph_contato"></div>
     <div class="hint" id="reportErro" hidden></div>
-    <div class="row"><button class="primary" id="enviarReport">Enviar relato</button></div>
+    <div class="row"><button class="primary" id="enviarReport" data-i18n="report.enviar">Enviar relato</button></div>
     <div class="msg" id="msgReport"></div>
   </div>
 </div>
@@ -543,15 +556,15 @@
 <!-- compartilhar -->
 <div class="modal" id="modalCompartilhar" hidden>
   <div class="box">
-    <button class="fechar" data-fechar="modalCompartilhar" aria-label="Fechar">✕</button>
-    <h3>📣 Desafie seus amigos</h3>
-    <div class="hint">Mande o convite: criar arte e ganhar sats, ou tentar roubar o pote.</div>
-    <img id="arteNoConvite" class="arte-convite" alt="Sua arte" hidden>
-    <button class="primary" id="compartilharArte" hidden>📱 Compartilhar com a arte</button>
+    <button class="fechar" data-fechar="modalCompartilhar" aria-label="Fechar" data-i18n-aria-label="fechar">✕</button>
+    <h3 data-i18n="share.titulo">📣 Desafie seus amigos</h3>
+    <div class="hint" data-i18n="share.hint">Mande o convite: criar arte e ganhar sats, ou tentar roubar o pote.</div>
+    <img id="arteNoConvite" class="arte-convite" alt="Sua arte" data-i18n-alt="share.alt" hidden>
+    <button class="primary" id="compartilharArte" hidden data-i18n="share.com_arte">📱 Compartilhar com a arte</button>
     <textarea id="textoConvite" readonly rows="8"></textarea>
     <div class="inline">
-      <button id="copiarConvite">📋 Copiar convite</button>
-      <button id="copiarArte" hidden>🖼️ Copiar a arte</button>
+      <button id="copiarConvite" data-i18n="share.copiar">📋 Copiar convite</button>
+      <button id="copiarArte" hidden data-i18n="share.copiar_arte">🖼️ Copiar a arte</button>
     </div>
     <div class="redes">
       <a class="rede x" id="shareX" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg><span>X</span></a>
@@ -565,29 +578,30 @@
 <!-- doações -->
 <div class="modal" id="modalDoar" hidden>
   <div class="box">
-    <button class="fechar" data-fechar="modalDoar" aria-label="Fechar">✕</button>
-    <h3>Doe para o pote ⚡</h3>
-    <div class="hint">Os sats doados pagam quem cria artes. Quanto mais gente doa, mais gente ganha.</div>
+    <button class="fechar" data-fechar="modalDoar" aria-label="Fechar" data-i18n-aria-label="fechar">✕</button>
+    <h3 data-i18n="doar.titulo">Doe para o pote ⚡</h3>
+    <div class="hint" data-i18n="doar.hint">Os sats doados pagam quem cria artes. Quanto mais gente doa, mais gente ganha.</div>
     <div id="doarEndereco" hidden>
       <div class="qr" id="qrEndereco"></div>
-      <div class="copia"><code id="txtEndereco"></code><button data-copiar="txtEndereco">Copiar</button></div>
+      <div class="copia"><code id="txtEndereco"></code><button data-copiar="txtEndereco" data-i18n="doar.copiar">Copiar</button></div>
     </div>
     <div id="doarValores" hidden>
-      <div class="hint" style="margin-top:14px">Ou gere uma cobrança de valor fixo:</div>
+      <div class="hint" style="margin-top:14px" data-i18n="doar.fixo">Ou gere uma cobrança de valor fixo:</div>
       <div class="valores">
         <button data-doar="21">21</button><button data-doar="210">210</button><button data-doar="2100">2100</button>
       </div>
-      <div class="inline"><input type="number" id="doarOutro" min="1" placeholder="outro valor"><button id="doarOutroBtn">Gerar</button></div>
+      <div class="inline"><input type="number" id="doarOutro" min="1" placeholder="outro valor" data-i18n-placeholder="doar.outro_ph"><button id="doarOutroBtn" data-i18n="doar.gerar">Gerar</button></div>
     </div>
     <div id="doarInvoice" hidden>
       <div class="qr" id="qrInvoice"></div>
-      <div class="copia"><code id="txtInvoice"></code><button data-copiar="txtInvoice">Copiar</button></div>
-      <div class="row"><a id="abrirCarteira" href="#" style="color:var(--accent-2)">Abrir na carteira</a></div>
+      <div class="copia"><code id="txtInvoice"></code><button data-copiar="txtInvoice" data-i18n="doar.copiar">Copiar</button></div>
+      <div class="row"><a id="abrirCarteira" href="#" style="color:var(--accent-2)" data-i18n="doar.carteira">Abrir na carteira</a></div>
     </div>
     <div class="msg" id="msgDoar"></div>
   </div>
 </div>
 
+<script src="/i18n.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
