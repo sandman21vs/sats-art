@@ -28,6 +28,8 @@ from .i18n import idioma_de, traduzir
 from .lnurl import LnurlErro
 from .recompensas import Recompensas, ResgateErro
 from .render import Excesso, ImagemInvalida, Ocupado, ParametroInvalido, Renderizador, dimensoes
+from .render import FORMATOS, AnimacaoRender, formato_de, lado_para
+from motor.animacao import FalhaAnimacao, achar_ffmpeg
 from .telegram import Telegram, TelegramErro
 
 log = logging.getLogger("servidor")
@@ -59,6 +61,14 @@ recompensas = Recompensas(cfg, db, coinos) if coinos else None
 telegram = Telegram(cfg.telegram_token, cfg.telegram_chat_id) if cfg.reports_ativos else None
 lim_export = antiabuso.Limitador(cfg.exports_por_10min, 600)
 lim_preview = antiabuso.Limitador(40, 60)
+# prévia rápida (1/3 da largura) que a página pede antes da nítida: limite próprio, igual ao da
+# nítida; as duas ainda passam pela cota de segundos de render da pessoa (CotaRender)
+lim_preview_rapida = antiabuso.Limitador(40, 60)
+PREVIA_RAPIDA_DIV = 3
+# animação: ~5 s de CPU cada; poucas por pessoa (além da cota de render)
+ANIMACOES_POR_10MIN = 4
+lim_animacao = antiabuso.Limitador(ANIMACOES_POR_10MIN, 600)
+FFMPEG = achar_ffmpeg()
 lim_upload = antiabuso.Limitador(30, 600)
 lim_resgate = antiabuso.Limitador(10, 600)
 lim_doacao = antiabuso.Limitador(5, 600)
@@ -399,6 +409,7 @@ async def info(req: Request):
         "doacao_qr": qr_svg(f"lightning:{cfg.doacao_endereco}") if cfg.doacao_endereco else None,
         "pote": None,
         "report_tipos": list(TIPOS_REPORT.items()) if telegram else [],
+        "animacao": AnimacaoRender(render, FFMPEG).tipos(),
     }
     if recompensas:
         with suppress(CoinosErro):
@@ -450,9 +461,47 @@ async def forma(req: Request):
 @app.post("/api/preview")
 async def preview(req: Request):
     ip = ip_de(req)
-    limitar(lim_preview, ip, "Muitas prévias seguidas. Espere um pouquinho.")
-    jpg, _ = await gerar_ou_recusar(await ler_json(req), cfg.preview_w, "JPEG", ip)
-    return Response(jpg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    rapida = req.query_params.get("rapida") == "1"
+    limitar(lim_preview_rapida if rapida else lim_preview, ip, "Muitas prévias seguidas. Espere um pouquinho.")
+    p = await ler_json(req)
+    try:
+        lado = lado_para(formato_de(p), cfg.preview_w)
+    except ParametroInvalido as e:
+        raise Recusado(400, str(e)) from e
+    if rapida:
+        lado = max(160, lado // PREVIA_RAPIDA_DIV)
+    jpg = await sem_esperar_quem_desistiu(req, gerar_ou_recusar(p, lado, "JPEG", ip))
+    if jpg is None:
+        return Response(status_code=204)
+    return Response(jpg[0], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+async def sem_esperar_quem_desistiu(req: Request, coro):
+    """Roda `coro`; se a página desistir do pedido (AbortController: um ajuste novo deixou a
+    prévia velha) antes de o desenho começar, ele sai da fila sem gastar CPU. Desenho já
+    começado termina (thread não se interrompe), mas ninguém espera por ele. None = desistiu."""
+    tarefa = asyncio.ensure_future(coro)
+
+    async def vigiar():
+        while True:
+            msg = await req.receive()
+            if msg["type"] == "http.disconnect":
+                return
+
+    vigia = asyncio.ensure_future(vigiar())
+    try:
+        await asyncio.wait({tarefa, vigia}, return_when=asyncio.FIRST_COMPLETED)
+        if tarefa.done():
+            return tarefa.result()
+        tarefa.cancel()
+        with suppress(asyncio.CancelledError, Recusado):
+            await tarefa
+        evento("previa_desistida", ruidoso=True)
+        return None
+    finally:
+        vigia.cancel()
+        if not tarefa.done():
+            tarefa.cancel()
 
 
 @app.post("/api/exportar")
@@ -463,13 +512,17 @@ async def exportar(req: Request):
     largura = p.get("largura", cfg.max_export)
     if isinstance(largura, bool) or not isinstance(largura, int):
         raise Recusado(400, "Largura inválida.")
-    largura = max(640, min(largura, cfg.max_export))
-    largura -= largura % 16
+    try:
+        formato = formato_de(p)
+    except ParametroInvalido as e:
+        raise Recusado(400, str(e)) from e
+    largura = max(640, min(largura, lado_para(formato, cfg.max_export)))
+    largura -= largura % (16 if formato in ("paisagem", "retrato", "capa_yt") else 4)
     png, c = await gerar_ou_recusar(p, largura, "PNG", ip)
     base = p.get("nome") if isinstance(p.get("nome"), str) and p.get("nome") else str(p.get("fonte") or "rede")
     base = re.sub(r"[^a-zA-Z0-9_-]+", "-", base).strip("-")[:40] or "rede"
-    w, h = dimensoes(largura, c.retrato)  # `largura` é o lado maior (a altura, no retrato)
-    nome = f"{base}{'' if c.circulo else '_sem_circulo'}{'_retrato' if c.retrato else ''}_s{c.seed}_{w}x{h}.png"
+    w, h = dimensoes(largura, formato=c.formato)  # `largura` é o lado maior (a altura, no retrato)
+    nome = f"{base}{'' if c.circulo else '_sem_circulo'}{sufixo_formato(c.formato)}_s{c.seed}_{w}x{h}.png"
     if cfg.modo_local and cfg.salvar_exports_em:  # só no app local (app.py), nunca no servidor
         os.makedirs(cfg.salvar_exports_em, exist_ok=True)
         with open(os.path.join(cfg.salvar_exports_em, nome), "wb") as f:
@@ -478,9 +531,56 @@ async def exportar(req: Request):
     if recompensas:
         # o token só vale para quem exportou (mesmo IPv4 ou mesmo /48)
         headers["X-Token-Resgate"] = recompensas.emitir_token(antiabuso.hash_cota(cfg.ip_salt, ip))
-    evento("exportacao", largura=largura, retrato=c.retrato, fonte=str(p.get("fonte"))[:20], circulo=c.circulo,
+    evento("exportacao", largura=largura, retrato=c.retrato, formato=c.formato, fonte=str(p.get("fonte"))[:20], circulo=c.circulo,
            bytes=len(png), token_emitido=bool(recompensas), ip=antiabuso.hash_ip(cfg.ip_salt, ip)[:12])
     return Response(png, media_type="image/png", headers=headers)
+
+
+def sufixo_formato(formato):
+    return "" if formato == "paisagem" else "_" + formato
+
+
+def nome_base(p):
+    base = p.get("nome") if isinstance(p.get("nome"), str) and p.get("nome") else str(p.get("fonte") or "rede")
+    return re.sub(r"[^a-zA-Z0-9_-]+", "-", base).strip("-")[:40] or "rede"
+
+
+# ---------- animação ----------
+@app.post("/api/animacao")
+async def animacao(req: Request):
+    ip = ip_de(req)
+    limitar(lim_animacao, ip, "Muitas animações em pouco tempo. Espere alguns minutos.")
+    p = await ler_json(req)
+    tipo = p.get("tipo", "mp4")
+    try:
+        dados, c = await AnimacaoRender(render, FFMPEG).gerar(p, tipo, limites=limites_render(ip))
+    except (ParametroInvalido, ImagemInvalida) as e:
+        raise Recusado(400, str(e)) from e
+    except Excesso as e:
+        raise Recusado(429, EXCESSO) from e
+    except Ocupado as e:
+        raise Recusado(503, "Muita gente criando agora. Tente de novo em alguns segundos.") from e
+    except FalhaAnimacao as e:
+        evento("animacao_falhou", "error", motivo=str(e)[:200])
+        raise Recusado(500, "Não consegui gerar a animação. Tente de novo.") from e
+    nome = f"{nome_base(p)}{sufixo_formato(c.formato)}_s{c.seed}_animacao.{tipo}"
+    return Response(dados, media_type="video/mp4" if tipo == "mp4" else "image/gif",
+                    headers={"Content-Disposition": f'attachment; filename="{nome}"', "X-Nome-Arquivo": nome,
+                             "Cache-Control": "no-store"})
+
+
+# ---------- modelos de estilo (miniaturas estáticas) ----------
+ESTILOS = os.path.join(STATIC, "estilos")
+_ARQ_ESTILO = re.compile(r"[a-z0-9_]{1,40}\.(webp|json)")
+
+
+@app.get("/estilos/{arquivo}")
+async def estilo_arquivo(arquivo: str):
+    if not _ARQ_ESTILO.fullmatch(arquivo) or not os.path.isfile(os.path.join(ESTILOS, arquivo)):
+        raise HTTPException(404)
+    json_ = arquivo.endswith(".json")
+    return FileResponse(os.path.join(ESTILOS, arquivo), media_type="application/json" if json_ else "image/webp",
+                        headers={"Cache-Control": "no-cache" if json_ else "public, max-age=86400"})
 
 
 # ---------- recompensas ----------
@@ -615,6 +715,8 @@ async def reportar(req: Request):
         with suppress(CoinosErro):
             contexto.append(f"Pote: {await recompensas.saldo()} sats (reserva {cfg.reserva_pote})")
     formato = "em pé" if p.get("retrato") is True else "deitada"
+    if isinstance(p.get("formato"), str) and p["formato"] in FORMATOS:
+        formato = p["formato"]
     contexto.append(f"Arte: {formato}" + (f" · tela {tela}" if tela else ""))
     contexto.append(f"Idioma da página: {_idioma(req)}")
     contexto.append("Navegador: " + _texto_report(req.headers.get("user-agent"), 160, linhas=False))

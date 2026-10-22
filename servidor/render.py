@@ -15,7 +15,7 @@ from shapely.affinity import affine_transform, scale, translate
 
 from motor.forma_imagem import (MAX_CORES, ImagemInvalida, analisar, forma_normalizada, holes_de_forma,
                                 mascara, reduzir, regioes_na_tela)
-from motor.rede_nos import Config, campo_de_cores, construir_rede, dimensoes, pintar
+from motor.rede_nos import FORMATOS, Config, campo_de_cores, construir_rede, dimensoes, pintar
 from motor.simbolos import SIMBOLOS
 
 from .eventos import evento
@@ -191,6 +191,10 @@ class Renderizador:
                 if not isinstance(v, list) or len(v) > MAX_CORES:
                     raise ParametroInvalido("Cores da arte inválidas.")
                 kw[k] = tuple(None if c is None else _cor(c, "Cores da arte inválidas.") for c in v)
+            elif k == "formato":  # um dos FORMATOS; tem prioridade sobre o `retrato` antigo
+                if not isinstance(v, str) or v not in FORMATOS:
+                    raise ParametroInvalido("Formato inválido.")
+                kw[k] = v
             elif k == "seed":
                 if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v < 2 ** 31:
                     raise ParametroInvalido("Semente inválida.")
@@ -233,6 +237,11 @@ class Renderizador:
 
     # ---------- trabalho pesado (roda em thread, sempre pela fila) ----------
     def _gerar(self, p, largura):
+        rede, cfg, campo = self._rede_e_campo(p)
+        return pintar(rede, cfg, largura, campo), cfg
+
+    def _rede_e_campo(self, p):
+        """Rede (do cache, ou construída e guardada) e campo de cores da logo, se houver."""
         cfg = self.ler_config(p)
         multicor = cfg.multicor and p.get("fonte") == "imagem"
         make_holes, chave_fonte, _, regioes, analise = (self.fonte_holes(p, com_regioes=True) if multicor
@@ -246,7 +255,7 @@ class Renderizador:
         if multicor and regioes is not None:
             campo = campo_de_cores(rede, cfg, lambda xs, ys: regioes_na_tela(
                 regioes, xs, ys, rede.CX, rede.CY, cfg.angulo, cfg.tamanho), self._cores_das_partes(cfg, analise))
-        return pintar(rede, cfg, largura, campo), cfg
+        return rede, cfg, campo
 
     @staticmethod
     def _cores_das_partes(cfg, analise):
@@ -365,10 +374,95 @@ class Renderizador:
         return await self._na_fila(lambda: para_bytes(self._miniatura(p), "PNG"), limites=limites)
 
 
+# ---------- animação (vídeo curto) ----------
+ANIM_LADO = 1080   # lado maior do vídeo, em px
+
+
+class AnimacaoRender:
+    """Grava a animação pela fila de render, em lotes de quadros: o trabalho reserva uma vaga na
+    fila e na cota da pessoa uma vez só, mas devolve o semáforo entre um lote e outro (cada lote
+    ≈ 1 s), para um vídeo de ~5 s de CPU não travar as prévias de todo mundo."""
+
+    def __init__(self, render: "Renderizador", ffmpeg=None):
+        self.render, self.ffmpeg = render, ffmpeg
+
+    def tipos(self):
+        return ["mp4", "gif"] if self.ffmpeg else ["gif"]
+
+    async def gerar(self, p, tipo, limites=()):
+        from motor.animacao import gravar
+        if tipo not in self.tipos():
+            raise ParametroInvalido("Formato de animação inválido.")
+        r = self.render
+        cfg = r.ler_config(p)  # valida antes de entrar na fila
+        if r.na_fila >= r.max_fila:
+            evento("fila_cheia", "warning", na_fila=r.na_fila, max_fila=r.max_fila)
+            raise Ocupado()
+        r.cota.entrar(limites)
+        r.na_fila += 1
+        gasto, desistiu, estado = 0.0, False, {"gen": None}
+
+        def passo():
+            if estado["gen"] is None:  # 1º lote: rede (cache) e campo de cores
+                rede, cfg2, campo = r._rede_e_campo(p)
+                estado["gen"] = gravar(rede, cfg2, lado_para(cfg2.formato, ANIM_LADO), campo, tipo, self.ffmpeg)
+            return next(estado["gen"])
+
+        async def trabalho():
+            nonlocal gasto
+            try:
+                while True:
+                    async with r.sem:
+                        if desistiu:
+                            return None
+                        t0 = time.perf_counter()
+                        try:
+                            dados = await asyncio.to_thread(passo)
+                        finally:
+                            gasto += time.perf_counter() - t0
+                    if dados is not None:
+                        return dados
+            finally:
+                if estado["gen"] is not None:
+                    await asyncio.to_thread(estado["gen"].close)  # fecha o ffmpeg e apaga o temporário
+                r.na_fila -= 1
+                r.cota.sair(limites, gasto)
+
+        tarefa = asyncio.create_task(trabalho())
+        r._tarefas.add(tarefa)
+        tarefa.add_done_callback(r._tarefas.discard)
+        try:
+            dados = await asyncio.shield(tarefa)
+        except asyncio.CancelledError:
+            desistiu = True  # para no fim do lote que está rodando (uma thread não se interrompe)
+            raise
+        evento("animacao", tipo=tipo, formato=cfg.formato, bytes=len(dados), s=round(gasto, 1))
+        return dados, cfg
+
+
+def formato_de(p):
+    """Formato pedido (validado), sem montar o Config inteiro: as rotas precisam dele para
+    escolher o tamanho antes de entrar na fila."""
+    return Renderizador.ler_config({k: p[k] for k in ("formato", "retrato") if isinstance(p, dict) and k in p}).formato
+
+
+def lado_para(formato, lado_max):
+    """Maior lado (px) permitido num formato: no máximo `lado_max` e nunca mais pixels que um
+    16:9 de `lado_max` (um quadrado de 7680 px teria 59 MP; o 8K 16:9 tem 33 MP)."""
+    w, h = dimensoes(lado_max, formato=formato)
+    teto = lado_max * (lado_max * 9 // 16)
+    if w * h <= teto:
+        return lado_max
+    lado = int(lado_max * math.sqrt(teto / (w * h)))
+    while lado > 16 and math.prod(dimensoes(lado, formato=formato)) > teto:
+        lado -= 1
+    return lado
+
+
 def para_bytes(im, fmt="JPEG"):
     buf = io.BytesIO()
     im.save(buf, fmt, **({"quality": 90} if fmt == "JPEG" else {"compress_level": 6}))
     return buf.getvalue()
 
 
-__all__ = ["dimensoes", "Renderizador", "ParametroInvalido", "ImagemInvalida", "Ocupado", "Excesso", "para_bytes"]
+__all__ = ["dimensoes", "formato_de", "lado_para", "FORMATOS", "Renderizador", "ParametroInvalido", "ImagemInvalida", "Ocupado", "Excesso", "para_bytes"]

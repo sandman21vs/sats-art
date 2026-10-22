@@ -268,6 +268,32 @@
   .regiao:hover { border-color: #4a423f; }
   .regiao:focus-within { outline: 2px solid #ff660080; outline-offset: 1px; }
 
+  /* formatos, estilos prontos, área segura e animação */
+  .formatos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .formatos button { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px 7px;
+    border-radius: 11px; line-height: 1.15; min-width: 0; }
+  .formatos .ico { display: grid; place-items: center; width: 34px; height: 30px; }
+  .formatos .ico i { display: block; border: 1.5px solid currentColor; border-radius: 3px; opacity: .8;
+    background: linear-gradient(135deg, #ff660033, transparent); }
+  .formatos .on .ico i { opacity: 1; background: linear-gradient(135deg, #ff660066, #ff660011); box-shadow: 0 0 8px #ff660055; }
+  .formatos b { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .formatos small { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .formatos .on small { color: var(--accent-2); }
+  .row label.guia-check { justify-content: flex-start; margin: 8px 2px 0; font-size: 12px; color: var(--muted); }
+  .estilos { display: grid; grid-auto-flow: column; grid-auto-columns: 92px; gap: 8px; overflow-x: auto;
+    padding: 2px 2px 8px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  .estilos button { padding: 0; border-radius: 11px; overflow: hidden; scroll-snap-align: start; text-align: left;
+    display: flex; flex-direction: column; background: #1f1c1b; }
+  .estilos img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }
+  .estilos span { display: block; font-size: 11.5px; padding: 4px 7px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .estilos button.on { box-shadow: 0 0 0 1px var(--accent); }
+  .guia-segura { position: absolute; pointer-events: none; overflow: hidden; border-radius: 8px; z-index: 1; }
+  .guia-segura i { position: absolute; border: 1.5px dashed #ffffffb0; border-radius: 4px; box-shadow: 0 0 0 9999px #00000055; }
+  .animacao { margin-top: 10px; }
+  .animacao .inline > .anim-btn { flex: 2; font-weight: 600; }
+  .animacao select { flex: 1; }
+  #preview.rapida { filter: blur(1.5px); }
+
   /* reportar problema */
   #reportTipos { margin: 12px 0 10px; }
   #reportTipos button { font-size: 12.5px; padding: 8px 6px; }
@@ -360,10 +386,11 @@
     <section class="passo">
       <h2><span class="num">2</span> <span data-i18n="p2.titulo">Deixe do seu jeito</span></h2>
       <div class="row" style="margin-top:0"><label data-i18n="p2.formato">Formato</label>
-        <div class="presets formato">
-          <button data-formato="paisagem" data-i18n-html="p2.paisagem">🖥️ Deitada <small>computador</small></button>
-          <button data-formato="retrato" data-i18n-html="p2.retrato">📱 Em pé <small>celular</small></button>
-        </div>
+        <div class="formatos" id="formatos" role="radiogroup" aria-label="Formato" data-i18n-aria-label="p2.formato"></div>
+        <label class="check guia-check" id="guiaLinha" hidden title="Fora da linha tracejada, o símbolo pode ficar escondido (relógio, botões, corte do app)." data-i18n-title="p2.guia_dica"><input type="checkbox" id="guia" checked> <span data-i18n="p2.guia">Mostrar área segura</span></label>
+      </div>
+      <div class="row"><label data-i18n="p2.estilos">Estilos prontos</label>
+        <div class="estilos" id="estilos"></div>
       </div>
       <div class="row"><label data-i18n="p2.cor">Cor</label>
         <div class="cores" id="cores">
@@ -399,6 +426,14 @@
       </div>
       <div class="row"><button class="primary" id="exportar">Baixar arte</button></div>
       <div class="msg" id="msgExport"></div>
+      <div class="animacao" id="blocoAnim" hidden>
+        <div class="inline">
+          <button id="baixarAnim" class="anim-btn" data-i18n="anim.btn">🎬 Baixar animação</button>
+          <select id="tipoAnim" aria-label="Tipo da animação" data-i18n-aria-label="anim.tipo"></select>
+        </div>
+        <div class="hint" data-i18n="anim.dica">5 s em loop: os nós acendem a partir do símbolo. Ótimo para stories e posts.</div>
+        <div class="msg" id="msgAnim"></div>
+      </div>
 
       <div class="card" id="cartao" hidden>
         <div class="grande" id="resultado" data-i18n="res.baixada">Arte baixada! 🎉</div>
@@ -417,6 +452,7 @@
       <a class="github" href="#" target="_blank" rel="noopener" title="Código no GitHub" aria-label="Código no GitHub" data-i18n-title="gh.titulo" data-i18n-aria-label="gh.titulo"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
     </div>
     <img id="preview" alt="Prévia da arte" data-i18n-alt="previa.alt" hidden>
+    <div class="guia-segura" id="guiaSegura" hidden aria-hidden="true"><i></i></div>
     <div class="status" id="status" data-i18n="status.carregando">Carregando…</div>
     <div class="dica" id="dica" data-i18n="dica">Sua arte aparece aqui e muda na hora conforme você ajusta ←</div>
   </main>
@@ -436,7 +472,7 @@
     <h3 id="tutTitulo" data-i18n="tut.titulo">Crie arte e ganhe sats ⚡</h3>
     <ol class="etapas">
       <li><div class="ico">🎨</div><div><b data-i18n="tut.1t">Escolha um símbolo</b><span data-i18n="tut.1d">Use o exemplo ou cole o print de qualquer logo, colorida ou não, de preferência em fundo liso.</span></div></li>
-      <li><div class="ico">✨</div><div><b data-i18n="tut.2t">Deixe do seu jeito</b><span data-i18n="tut.2d">Troque a cor, o tamanho e sorteie variações. A prévia muda na hora.</span></div></li>
+      <li><div class="ico">✨</div><div><b data-i18n="tut.2t">Deixe do seu jeito</b><span data-i18n="tut.2d">Escolha um estilo pronto e o formato (tela, Instagram, capa, celular), troque a cor e sorteie variações.</span></div></li>
       <li id="tutGanhe"><div class="ico">⚡</div><div><b data-i18n="tut.3t">Baixe e ganhe sats</b><span id="tutGanheTxt" data-i18n="tut.3d">Coloque seu endereço Lightning e receba na hora.</span></div></li>
       <li><div class="ico">📣</div><div><b data-i18n="tut.4t">Compartilhe</b><span data-i18n="tut.4d">Mostre sua arte e desafie os amigos: criar e ganhar sats, ou tentar roubar o pote.</span></div></li>
     </ol>

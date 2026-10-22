@@ -74,6 +74,15 @@ MENSAGENS = {
         "The image expired on the server. Upload it again.", "Das Bild ist auf dem Server abgelaufen. Lade es erneut hoch."),
     "Ajuste de imagem inválido.": ("Invalid image setting.", "Ungültige Bildeinstellung."),
     "Símbolo desconhecido.": ("Unknown symbol.", "Unbekanntes Symbol."),
+    # formatos e animação
+    "Formato inválido.": ("Invalid format.", "Ungültiges Format."),
+    "Formato de animação inválido.": ("Invalid animation format.", "Ungültiges Animationsformat."),
+    "Muitas animações em pouco tempo. Espere alguns minutos.": (
+        "Too many animations in a short time. Wait a few minutes.",
+        "Zu viele Animationen in kurzer Zeit. Warte ein paar Minuten."),
+    "Não consegui gerar a animação. Tente de novo.": (
+        "Couldn't create the animation. Please try again.",
+        "Die Animation konnte nicht erstellt werden. Versuch es noch einmal."),
     "Só há forma detectada para imagens enviadas.": (
         "A detected shape only exists for uploaded images.", "Eine erkannte Form gibt es nur für hochgeladene Bilder."),
     # motor/forma_imagem.py
