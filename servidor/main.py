@@ -350,7 +350,7 @@ def pagina_com_versao():
     com o JavaScript antigo e a página nova, e o site travaria em "Carregando…"."""
     with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as f:
         html = f.read()
-    for arquivo in ("i18n.js", "app.js"):
+    for arquivo in ("i18n.js", "app.js", "galeria.js"):
         html = html.replace(f'src="/{arquivo}"', f'src="/{arquivo}?v={versao_app(arquivo)}"')
     return html
 
@@ -629,3 +629,11 @@ async def reportar(req: Request):
     # o texto do relato vai só para o Telegram, nunca para o log (pode ter endereço, e-mail...)
     evento("report_enviado", tipos=tipos, caracteres=len(texto), contato=bool(contato), ip=pessoa)
     return {"ok": True}
+
+
+# ---------- link da arte (/a/<id>) e galeria pública: veja servidor/galeria.py ----------
+from . import galeria  # noqa: E402
+
+app.include_router(galeria.criar_router(
+    cfg=cfg, render=render, ip_de=ip_de, limitar=limitar, ler_json=ler_json, Recusado=Recusado,
+    limites_render=limites_render, pagina=pagina_com_versao, versao=versao_app))
