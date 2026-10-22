@@ -564,6 +564,32 @@ $("abrirTutorial").addEventListener("click", () => {
 });
 $("comecar").addEventListener("click", () => fechar("tutorial"));
 
+// ---------- tutorial da logo ----------
+const telasLogo = [...document.querySelectorAll("#modalLogo [data-tela]")];
+let telaLogo = 0;
+telasLogo.forEach((_, i) => {
+  const b = document.createElement("button");
+  b.setAttribute("aria-label", `Passo ${i + 1}`);
+  b.addEventListener("click", () => mostrarTelaLogo(i));
+  $("pontosLogo").appendChild(b);
+});
+function mostrarTelaLogo(i) {
+  telaLogo = i;
+  telasLogo.forEach((t, j) => { t.hidden = j !== i; });
+  [...$("pontosLogo").children].forEach((b, j) => b.classList.toggle("on", j === i));
+  $("logoVoltar").disabled = i === 0;
+  $("logoAvancar").textContent = i === telasLogo.length - 1 ? "Entendi" : "Próximo";
+}
+document.querySelectorAll("[data-tutorial-logo]").forEach((b) => b.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!$("tutorial").hidden) fechar("tutorial");
+  mostrarTelaLogo(parseInt(b.dataset.tutorialLogo)); abrir("modalLogo");
+}));
+$("logoVoltar").addEventListener("click", () => mostrarTelaLogo(telaLogo - 1));
+$("logoAvancar").addEventListener("click", () => {
+  if (telaLogo < telasLogo.length - 1) mostrarTelaLogo(telaLogo + 1); else fechar("modalLogo");
+});
+
 // ---------- doações ----------
 let pollDoacao = null;
 function abrirDoar() {

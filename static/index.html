@@ -179,6 +179,56 @@
   .etapas b { display: block; }
   .etapas span { color: var(--muted); font-size: 13px; }
 
+  /* tutorial da logo */
+  .ajuda-logo { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  #modalLogo .box { width: min(460px, 100%); }
+  .tela { min-height: 270px; }
+  .tela p { color: var(--muted); font-size: 13px; margin: 6px 0; }
+  .tela b { color: var(--text); }
+  .cena { display: block; width: 100%; max-width: 320px; margin: 6px auto 10px; border-radius: 12px; background: #0f0d0d; border: 1px solid var(--line); }
+  .pontos { display: flex; justify-content: center; gap: 6px; margin: 14px 0 12px; }
+  .pontos button { width: 9px; height: 9px; padding: 0; border-radius: 50%; border: 0; background: #3a3432; }
+  .pontos button.on { background: var(--accent); width: 22px; border-radius: 9px; }
+  .nav-logo { display: flex; gap: 8px; }
+  .nav-logo button { flex: 1; }
+  .nav-logo .primary { width: auto; padding: 10px; font-size: 14px; }
+  /* cena 1: arrastar */
+  .arrasta { animation: arrasta 4s ease-in-out infinite; }
+  @keyframes arrasta {
+    0%, 12% { transform: translate(0, 0) scale(1); opacity: 1; }
+    50% { transform: translate(152px, 6px) scale(1); opacity: 1; }
+    62% { transform: translate(152px, 6px) scale(.55); opacity: 0; }
+    100% { transform: translate(152px, 6px) scale(.55); opacity: 0; }
+  }
+  .alvo { fill: transparent; stroke: #3a3432; stroke-width: 1.5; stroke-dasharray: 5 4; animation: alvo 4s ease infinite; }
+  @keyframes alvo { 0%, 30% { fill: transparent; stroke: #3a3432; } 38%, 62% { fill: #ff66001f; stroke: #ff6600; } 75%, 100% { fill: transparent; stroke: #3a3432; } }
+  .solto { opacity: 0; animation: solto 4s ease infinite; }
+  @keyframes solto { 0%, 58% { opacity: 0; } 66%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  /* cena 2: conferir a forma */
+  .errado { animation: troca 4s steps(1) infinite; }
+  .certo { animation: troca 4s steps(1) infinite reverse; }
+  @keyframes troca { 0% { opacity: 1; } 50% { opacity: 0; } }
+  .marca { animation: marca 4s steps(1) infinite; }
+  @keyframes marca { 0% { opacity: 0; } 50% { opacity: 1; } }
+  /* cena 3: ajustar */
+  .rede-demo g line { stroke-width: 1.3; animation: cor 6s steps(1) infinite; }
+  .rede-demo g circle { animation: corp 6s steps(1) infinite; }
+  @keyframes cor { 0% { stroke: #ff6600; } 33% { stroke: #2fb4ff; } 66% { stroke: #21d39b; } }
+  @keyframes corp { 0% { fill: #ffd9b8; } 33% { fill: #c9ecff; } 66% { fill: #c8f5e6; } }
+  .anel { fill: none; stroke: #fff; stroke-width: 2; opacity: 0; animation: anel 6s steps(1) infinite; }
+  .anel.a1 { animation-delay: 0s; } .anel.a2 { animation-delay: -4s; } .anel.a3 { animation-delay: -2s; }
+  @keyframes anel { 0% { opacity: 1; } 33% { opacity: 0; } }
+  /* dicas */
+  .exemplos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  .exemplos figure { margin: 0; text-align: center; font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+  .exemplos svg { display: block; width: 100%; aspect-ratio: 1; border-radius: 10px; border: 2px solid; margin-bottom: 4px; }
+  .exemplos .bom svg { border-color: #3f7d48; }
+  .exemplos .ruim svg { border-color: #8a3328; }
+  .exemplos figcaption b { display: block; font-size: 12px; }
+  .exemplos .bom b { color: var(--ok); }
+  .exemplos .ruim b { color: #ff8a7a; }
+  .aviso-logo { font-size: 12.5px; color: #ffd2ad; background: #2a1708; border: 1px solid #6a3510; border-radius: 10px; padding: 9px 11px; margin-top: 8px; }
+
   /* reportar problema */
   #reportTipos { margin: 12px 0 10px; }
   #reportTipos button { font-size: 12.5px; padding: 8px 6px; }
@@ -249,8 +299,9 @@
         <div id="dropTxt">Use qualquer logo: <b>arraste</b>, <b>cole um print</b> (Ctrl/⌘+V) ou <b>clique</b> para escolher</div>
       </div>
       <input type="file" id="file" accept="image/*" hidden>
+      <div class="ajuda-logo"><span>Funciona melhor com logo preto e branco</span><button class="link" data-tutorial-logo="0">Como usar sua logo?</button></div>
       <div id="imgopts" hidden>
-        <div class="shape"><img id="shape" alt="forma detectada"><div>Assim entendemos sua imagem. Se veio errado, ajuste abaixo.</div></div>
+        <div class="shape"><img id="shape" alt="forma detectada"><div>Assim entendemos sua imagem. Se veio errado, ajuste abaixo ou <button class="link" data-tutorial-logo="3">veja que imagens funcionam melhor</button>.</div></div>
         <div class="row"><label>Sensibilidade <span id="v-limiar"></span></label>
           <input type="range" id="limiar" min="5" max="200" step="1"></div>
         <label class="check"><input type="checkbox" id="inverter"> Inverter (símbolo escuro ↔ claro)</label>
@@ -330,12 +381,129 @@
     </svg>
     <h3 id="tutTitulo">Crie arte e ganhe sats ⚡</h3>
     <ol class="etapas">
-      <li><div class="ico">🎨</div><div><b>Escolha um símbolo</b><span>Use o exemplo ou cole o print de qualquer logo.</span></div></li>
+      <li><div class="ico">🎨</div><div><b>Escolha um símbolo</b><span>Use o exemplo ou cole o print de qualquer logo, de preferência em preto e branco.</span></div></li>
       <li><div class="ico">✨</div><div><b>Deixe do seu jeito</b><span>Troque a cor, o tamanho e sorteie variações. A prévia muda na hora.</span></div></li>
       <li id="tutGanhe"><div class="ico">⚡</div><div><b>Baixe e ganhe sats</b><span id="tutGanheTxt">Coloque seu endereço Lightning e receba na hora.</span></div></li>
       <li><div class="ico">📣</div><div><b>Compartilhe</b><span>Mostre sua arte e desafie os amigos: criar e ganhar sats, ou tentar roubar o pote.</span></div></li>
     </ol>
-    <button class="primary" id="comecar">Começar</button>
+    <div class="nav-logo">
+      <button id="comecar">Pular</button>
+      <button class="primary" data-tutorial-logo="0">Próximo: sua logo →</button>
+    </div>
+  </div>
+</div>
+
+<!-- tutorial da logo -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="raioLogo" viewBox="0 0 40 52"><path d="M25 1 L4 30 H18 L13 51 L36 20 H22 Z"/></symbol>
+    <pattern id="xadrez" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#fff"/><rect width="5" height="5" fill="#d6d6d6"/><rect x="5" y="5" width="5" height="5" fill="#d6d6d6"/>
+    </pattern>
+    <linearGradient id="multicor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe14d"/><stop offset=".33" stop-color="#ffe14d"/><stop offset=".33" stop-color="#7fe0ff"/>
+      <stop offset=".66" stop-color="#7fe0ff"/><stop offset=".66" stop-color="#e2342b"/><stop offset="1" stop-color="#e2342b"/>
+    </linearGradient>
+    <linearGradient id="degrade" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4f4f4"/><stop offset="1" stop-color="#4a4a4a"/></linearGradient>
+  </defs>
+</svg>
+<div class="modal" id="modalLogo" hidden>
+  <div class="box">
+    <button class="fechar" data-fechar="modalLogo" aria-label="Fechar">✕</button>
+    <h3>Como usar sua logo</h3>
+
+    <div class="tela" data-tela="0">
+      <svg class="cena" viewBox="0 0 300 150" aria-hidden="true">
+        <rect class="alvo" x="170" y="22" width="112" height="106" rx="10"/>
+        <text x="226" y="118" text-anchor="middle" font-size="9" fill="#9a8f88">solte aqui</text>
+        <g class="solto">
+          <rect x="204" y="38" width="44" height="54" rx="5" fill="#fff"/>
+          <use href="#raioLogo" x="212" y="44" width="28" height="40" fill="#111"/>
+          <circle cx="250" cy="38" r="9" fill="#7fd18b"/><path d="M245.5 38 l3 3 l5.5 -6" stroke="#0e0d0d" stroke-width="2" fill="none"/>
+        </g>
+        <g class="arrasta" style="transform-box: fill-box; transform-origin: center">
+          <rect x="18" y="28" width="72" height="90" rx="7" fill="#fff"/>
+          <use href="#raioLogo" x="34" y="36" width="40" height="56" fill="#111"/>
+          <text x="54" y="109" text-anchor="middle" font-size="9" fill="#777">logo.png</text>
+          <path d="M76 92 l0 22 l6 -5 l4 9 l4 -2 l-4 -9 l8 0 z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/>
+        </g>
+      </svg>
+      <p><b>1. Arraste a logo até o quadro tracejado</b> do passo 1.</p>
+      <p>No celular, toque no quadro e escolha da galeria. No computador também dá para colar um print com <b>Ctrl/⌘+V</b>.</p>
+    </div>
+
+    <div class="tela" data-tela="1" hidden>
+      <svg class="cena" viewBox="0 0 300 150" aria-hidden="true">
+        <rect x="22" y="18" width="96" height="96" rx="8" fill="#fff"/>
+        <use href="#raioLogo" x="44" y="28" width="52" height="76" fill="#111"/>
+        <text x="70" y="134" text-anchor="middle" font-size="10" fill="#9a8f88">sua logo</text>
+        <path d="M136 66 h26 m-7 -7 l7 7 l-7 7" stroke="#ff6600" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <g class="errado">
+          <rect x="182" y="18" width="96" height="96" rx="8" fill="#f0f0f0"/>
+          <use href="#raioLogo" x="204" y="28" width="52" height="76" fill="#141414"/>
+          <text x="230" y="134" text-anchor="middle" font-size="10" fill="#ff8a7a">✗ ficou ao contrário</text>
+        </g>
+        <g class="certo">
+          <rect x="182" y="18" width="96" height="96" rx="8" fill="#141414" stroke="#2a2625"/>
+          <use href="#raioLogo" x="204" y="28" width="52" height="76" fill="#f0f0f0"/>
+          <text x="230" y="134" text-anchor="middle" font-size="10" fill="#7fd18b">✓ símbolo em branco</text>
+        </g>
+      </svg>
+      <p><b>2. Confira a forma detectada.</b> O símbolo tem que aparecer <b>branco</b> no fundo escuro.</p>
+      <p>Saiu ao contrário? Marque <b>Inverter</b>. Faltou pedaço ou entrou sujeira? Mexa na <b>Sensibilidade</b>.</p>
+    </div>
+
+    <div class="tela" data-tela="2" hidden>
+      <svg class="cena rede-demo" viewBox="0 0 300 150" aria-hidden="true">
+        <g>
+          <line x1="30" y1="30" x2="70" y2="18"/><line x1="70" y1="18" x2="110" y2="26"/><line x1="110" y1="26" x2="150" y2="14"/>
+          <line x1="150" y1="14" x2="190" y2="24"/><line x1="190" y1="24" x2="230" y2="16"/><line x1="230" y1="16" x2="270" y2="32"/>
+          <line x1="30" y1="30" x2="22" y2="70"/><line x1="22" y1="70" x2="40" y2="108"/><line x1="70" y1="18" x2="84" y2="60"/>
+          <line x1="84" y1="60" x2="22" y2="70"/><line x1="84" y1="60" x2="95" y2="104"/><line x1="40" y1="108" x2="95" y2="104"/>
+          <line x1="95" y1="104" x2="150" y2="114"/><line x1="150" y1="114" x2="205" y2="106"/><line x1="205" y1="106" x2="262" y2="110"/>
+          <line x1="262" y1="110" x2="280" y2="72"/><line x1="280" y1="72" x2="270" y2="32"/><line x1="216" y1="62" x2="230" y2="16"/>
+          <line x1="216" y1="62" x2="280" y2="72"/><line x1="216" y1="62" x2="205" y2="106"/><line x1="110" y1="26" x2="84" y2="60"/>
+          <line x1="190" y1="24" x2="216" y2="62"/>
+        </g>
+        <g>
+          <circle cx="30" cy="30" r="2.6"/><circle cx="70" cy="18" r="2.6"/><circle cx="110" cy="26" r="2.6"/><circle cx="150" cy="14" r="2.6"/>
+          <circle cx="190" cy="24" r="2.6"/><circle cx="230" cy="16" r="2.6"/><circle cx="270" cy="32" r="2.6"/><circle cx="22" cy="70" r="2.6"/>
+          <circle cx="84" cy="60" r="2.6"/><circle cx="216" cy="62" r="2.6"/><circle cx="280" cy="72" r="2.6"/><circle cx="40" cy="108" r="2.6"/>
+          <circle cx="95" cy="104" r="2.6"/><circle cx="150" cy="114" r="2.6"/><circle cx="205" cy="106" r="2.6"/><circle cx="262" cy="110" r="2.6"/>
+        </g>
+        <use href="#raioLogo" x="128" y="32" width="44" height="66" fill="none" stroke="#3a3432" stroke-dasharray="3 3"/>
+        <circle cx="122" cy="136" r="7" fill="#ff6600"/><circle cx="150" cy="136" r="7" fill="#2fb4ff"/><circle cx="178" cy="136" r="7" fill="#21d39b"/>
+        <circle class="anel a1" cx="122" cy="136" r="10.5"/><circle class="anel a2" cx="150" cy="136" r="10.5"/><circle class="anel a3" cx="178" cy="136" r="10.5"/>
+      </svg>
+      <p><b>3. Deixe do seu jeito.</b> A logo vira o vazio no meio da rede de nós.</p>
+      <p>Troque a cor, mude o tamanho e aperte <b>🎲 Nova variação</b> até gostar. A prévia muda na hora.</p>
+    </div>
+
+    <div class="tela" data-tela="3" hidden>
+      <p style="margin-top:0"><b>Que imagem funciona melhor?</b> O app separa a logo do fundo pelo <b>claro e escuro</b>, não pelas cores. Quanto mais contraste, melhor.</p>
+      <div class="exemplos">
+        <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#111"/></svg>
+          <figcaption><b>✓ Preto e branco</b>o ideal</figcaption></figure>
+        <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#xadrez)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#111"/></svg>
+          <figcaption><b>✓ PNG sem fundo</b>transparente</figcaption></figure>
+        <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#111"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#fff"/></svg>
+          <figcaption><b>✓ Branco no preto</b>também vale</figcaption></figure>
+        <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="url(#multicor)"/></svg>
+          <figcaption><b>✗ Muitas cores</b>partes claras somem</figcaption></figure>
+        <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#degrade)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#333"/></svg>
+          <figcaption><b>✗ Foto ou degradê</b>o fundo vira forma</figcaption></figure>
+        <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#eee"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#cfcfcf"/></svg>
+          <figcaption><b>✗ Tom parecido</b>com o fundo</figcaption></figure>
+      </div>
+      <p>💡 <b>Logo colorida?</b> Procure a versão de uma cor só (pesquise "nome da marca logo preto e branco") ou passe um filtro preto e branco com bastante contraste antes de enviar. Evite também texto miúdo e linhas muito finas.</p>
+      <div class="aviso-logo">Por enquanto o app não diferencia cores. Estamos trabalhando para ele reconhecer logos coloridas.</div>
+    </div>
+
+    <div class="pontos" id="pontosLogo"></div>
+    <div class="nav-logo">
+      <button id="logoVoltar">Voltar</button>
+      <button class="primary" id="logoAvancar">Próximo</button>
+    </div>
   </div>
 </div>
 
