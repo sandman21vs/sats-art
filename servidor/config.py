@@ -92,8 +92,8 @@ class Config:
                 "TRUST_PROXY=1 exige PROXY_SECRET (32+ caracteres) no .env, repassado pelo proxy "
                 "no cabeçalho X-Proxy-Secret. Sem ele, qualquer conexão da rede do Docker poderia "
                 "escolher o próprio IP. Veja o README.")
-        if self.admin_token and len(self.admin_token) < 16:
-            raise RuntimeError("ADMIN_TOKEN precisa de 16+ caracteres. Gere com: openssl rand -hex 24")
+        if self.admin_token and len(self.admin_token) < 12:
+            raise RuntimeError("ADMIN_TOKEN precisa de 12+ caracteres. Gere com: openssl rand -hex 24")
         if not self.recompensas_ativas:
             return
         faltando = [n for n in ("POW_HMAC_KEY", "IP_SALT") if len(os.environ.get(n, "")) < 32]

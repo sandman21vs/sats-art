@@ -147,6 +147,7 @@ const TEXTOS = {
     "p1.chip_off": "Cor {hex}: fora do símbolo",
     "p1.chip_on": "Cor {hex}: no símbolo",
     "p1.cores_min": "Pelo menos uma cor precisa ficar no símbolo.",
+    "p1.cores_inverter": "Desmarque Inverter para escolher as cores.",
     "p1.cores_dica": "Toque numa cor para tirar essa parte do símbolo.",
     "p1.cores_titulo": "Cores encontradas",
     "logo.voltar": "Voltar",
@@ -352,6 +353,7 @@ const TEXTOS = {
     "p1.chip_off": "Color {hex}: left out of the symbol",
     "p1.chip_on": "Color {hex}: in the symbol",
     "p1.cores_min": "At least one color has to stay in the symbol.",
+    "p1.cores_inverter": "Uncheck Invert to pick colors.",
     "p1.cores_dica": "Tap a color to remove that part from the symbol.",
     "p1.cores_titulo": "Colors found",
     "logo.voltar": "Back",
@@ -557,6 +559,7 @@ const TEXTOS = {
     "p1.chip_off": "Farbe {hex}: nicht im Symbol",
     "p1.chip_on": "Farbe {hex}: im Symbol",
     "p1.cores_min": "Mindestens eine Farbe muss im Symbol bleiben.",
+    "p1.cores_inverter": "Entferne das Häkchen bei Invertieren, um Farben zu wählen.",
     "p1.cores_dica": "Tippe auf eine Farbe, um diesen Teil aus dem Symbol zu nehmen.",
     "p1.cores_titulo": "Gefundene Farben",
     "logo.voltar": "Zurück",
@@ -635,7 +638,9 @@ function detectarIdioma(salvo) {
 
 function t(chave, vars) {
   const s = TEXTOS[idioma][chave] ?? TEXTOS.pt[chave] ?? chave;
-  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : s;
+  // números entram no formato do idioma (0,3 em vez de 0.3; 1.000 ou 1,000)
+  const valor = (v) => (typeof v === "number" && Number.isFinite(v) ? v.toLocaleString(LOCAIS[idioma]) : v);
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? valor(vars[k]) : m)) : s;
 }
 const temTexto = (chave) => chave in TEXTOS.pt;
 const ordinal = (i) => t("ordinal", { n: idioma === "en" ? ordinalEn(i + 1) : i + 1 });

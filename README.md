@@ -139,6 +139,12 @@ Com `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`, a página mostra um bot
 
 O IP cru nunca vai para o Telegram, e o texto do relato nunca vai para o log. Os limites são 3 relatos a cada 10 minutos por pessoa e `REPORTS_PER_HOUR` (padrão 30) no site todo.
 
+### Painel admin e alerta de pote
+
+`./configurar.sh admin` gera o `ADMIN_TOKEN` e liga o painel em `/admin` (sem o token ele responde 404). Entre com o token no formulário; ele vira um cookie HttpOnly de 8 horas, com limite de 8 tentativas por IP a cada 10 minutos. O painel mostra artes e sats por dia (14 dias), saldo do pote, resgates, erros das últimas 24 h e os últimos relatos.
+
+Com o Telegram configurado, o servidor avisa quando o pote cai abaixo de `ALERTA_POTE_SATS` (padrão 500; 0 desliga), no máximo a cada `ALERTA_POTE_HORAS` (padrão 6), e avisa de novo quando ele volta acima.
+
 Para configurar:
 1. No Telegram, fale com o [@BotFather](https://t.me/BotFather), mande `/newbot` e guarde o token que ele devolve.
 2. Abra a conversa com o seu bot novo e mande `/start` (o bot só consegue escrever para quem falou com ele antes). Para receber num grupo, adicione o bot ao grupo e mande uma mensagem lá.

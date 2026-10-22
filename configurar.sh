@@ -102,7 +102,7 @@ validar() {
     TELEGRAM_CHAT_ID)
       re='^-?[0-9]+$'; [[ $v =~ $re ]] || { echo "O chat id é um número (grupos começam com -)."; return 1; } ;;
     ADMIN_TOKEN)
-      [ "${#v}" -ge 16 ] || { echo "Precisa de 16 caracteres ou mais (digite g para gerar)."; return 1; } ;;
+      [ "${#v}" -ge 12 ] || { echo "Precisa de 12 caracteres ou mais (digite g para gerar)."; return 1; } ;;
     PROXY_SECRET|POW_HMAC_KEY|IP_SALT)
       [ "${#v}" -ge 32 ] || { echo "Precisa de 32 caracteres ou mais (digite g para gerar)."; return 1; } ;;
     *)

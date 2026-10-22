@@ -39,13 +39,19 @@ if (!(estado.fonte in ANGULO_PADRAO) || estado.fonte === "imagem") {  // a image
 delete estado.imagem_id;
 // as cores da logo valem só para a imagem enviada nesta sessão (estados antigos não têm estes campos)
 Object.assign(estado, { cores_off: [], cores_arte: [], multicor: estado.multicor === true });
+// a escolha "Cores da logo" é da pessoa: vale para a próxima logo colorida, mesmo depois de uma de uma cor só
+let prefereMulticor = guardado("prefere-multicor", false) === true;
+const definirMulticor = (v) => { estado.multicor = prefereMulticor = v; guardar("prefere-multicor", v); };
+const pedido = () => (estado.inverter ? { ...estado, cores_off: [], multicor: false } : estado);  // com Inverter as cores não valem
 let paletaLogo = [];  // [{ hex, parte, arte }] da imagem enviada, na ordem do servidor
 let INFO = { recompensas: false, max_export: 3840, recompensas_seq: [], limite_dia: 0 };
 let DIA = null;  // { feitos, ganho_hoje, restante_hoje, proxima }
 
 const $ = (id) => document.getElementById(id);
-const fmt = (v, step) => (step < 1 ? Number(v).toFixed(step < 0.1 ? 2 : 1) : String(v));
+const casas = (step) => (step < 1 ? (step < 0.1 ? 2 : 1) : 0);
+const fmt = (v, step) => Number(v).toLocaleString(LOCAIS[idioma], { minimumFractionDigits: casas(step), maximumFractionDigits: casas(step) });
 const num = (n) => Number(n).toLocaleString(LOCAIS[idioma]);
+const pct = (p) => new Intl.NumberFormat(LOCAIS[idioma], { style: "percent" }).format(p);
 // JSON com Content-Type explícito: o servidor recusa POST sem ele (proteção contra CSRF)
 const postJSON = (url, corpo) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Idioma": idioma }, body: JSON.stringify(corpo) });
 // o último erro mostrado vai junto, se a pessoa reportar um problema
@@ -79,7 +85,7 @@ for (const c of CORES) {
   const b = document.createElement("button");
   b.style.background = c; b.dataset.cor = c; b.title = c;
   b.dataset.i18nVars = JSON.stringify({ cor: c }); b.setAttribute("data-i18n-aria-label", "p2.cor_aria");
-  b.addEventListener("click", () => { estado.cor = c; estado.multicor = false; sincronizar(); mudou(); });
+  b.addEventListener("click", () => { estado.cor = c; if (estado.multicor) definirMulticor(false); sincronizar(); mudou(); });
   $("cores").insertBefore(b, $("cores").querySelector(".outra"));
 }
 
@@ -91,7 +97,7 @@ function sincronizar() {
   $("circulo").checked = estado.circulo;
   $("cor").value = estado.cor;
   document.querySelectorAll("[data-cor]").forEach((b) => b.classList.toggle("on", !usaCoresLogo() && b.dataset.cor === estado.cor));
-  $("limiar").value = estado.limiar; $("v-limiar").textContent = estado.limiar;
+  $("limiar").value = estado.limiar; $("v-limiar").textContent = num(estado.limiar);
   $("inverter").checked = estado.inverter;
   document.querySelectorAll("[data-fonte]").forEach((b) => b.classList.toggle("on", b.dataset.fonte === estado.fonte));
   $("imgopts").hidden = estado.fonte !== "imagem";
@@ -117,14 +123,14 @@ async function renderizar() {
   st.className = "status busy"; escrever(st, K("status.desenhando"));
   const t0 = performance.now();
   try {
-    const r = await postJSON("/api/preview", estado);
+    const r = await postJSON("/api/preview", pedido());
     if (!r.ok) throw new Error((await r.json()).erro || r.statusText);
     ultimaPrevia = await r.blob();
     const url = URL.createObjectURL(ultimaPrevia);
     const img = $("preview"), velho = img.src;
     img.src = url; img.hidden = false;
     if (velho.startsWith("blob:")) URL.revokeObjectURL(velho);
-    st.className = "status"; escrever(st, K("status.pronto", { s: ((performance.now() - t0) / 1000).toFixed(1) }));
+    st.className = "status"; escrever(st, K("status.pronto", { s: Math.round((performance.now() - t0) / 100) / 10 }));
     primeiraPrevia = false;
   } catch (e) {
     erroNoStatus(e.message);
@@ -159,7 +165,7 @@ let pedidoForma = 0;  // só a resposta do último pedido vale (cliques rápidos
 async function atualizarForma() {
   if (estado.fonte !== "imagem") return;
   const n = ++pedidoForma;
-  const r = await postJSON("/api/forma", estado);
+  const r = await postJSON("/api/forma", pedido());
   const png = r.ok ? await r.blob() : null;
   if (n !== pedidoForma) return;
   if (r.ok) $("shape").src = URL.createObjectURL(png);
@@ -178,8 +184,8 @@ document.addEventListener("paste", (e) => {
   if (item) carregarImagem(item.getAsFile());
 });
 
-$("limiar").addEventListener("input", (e) => { estado.limiar = parseInt(e.target.value); $("v-limiar").textContent = estado.limiar; atualizarForma(); mudou(); });
-$("inverter").addEventListener("change", (e) => { estado.inverter = e.target.checked; atualizarForma(); mudou(); });
+$("limiar").addEventListener("input", (e) => { estado.limiar = parseInt(e.target.value); $("v-limiar").textContent = num(estado.limiar); atualizarForma(); mudou(); });
+$("inverter").addEventListener("change", (e) => { estado.inverter = e.target.checked; sincronizarCoresLogo(); atualizarForma(); mudou(); });
 document.querySelectorAll("[data-formato]").forEach((b) => b.addEventListener("click", () => {
   estado.retrato = b.dataset.formato === "retrato";
   sincronizar(); mudou();
@@ -187,7 +193,7 @@ document.querySelectorAll("[data-formato]").forEach((b) => b.addEventListener("c
 $("circulo").addEventListener("change", (e) => { estado.circulo = e.target.checked; mudou(); });
 $("seed").addEventListener("change", (e) => { estado.seed = parseInt(e.target.value) || 0; mudou(); });
 $("sortear").addEventListener("click", () => { estado.seed = Math.floor(Math.random() * 100000); $("seed").value = estado.seed; mudou(); });
-$("cor").addEventListener("input", (e) => { estado.cor = e.target.value; estado.multicor = false; sincronizar(); mudou(); });
+$("cor").addEventListener("input", (e) => { estado.cor = e.target.value; if (estado.multicor) definirMulticor(false); sincronizar(); mudou(); });
 $("reset").addEventListener("click", () => {
   const { fonte, imagem_id, limiar, inverter, retrato, cores_off } = estado;  // o formato escolhido fica
   estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, cores_off, angulo: ANGULO_PADRAO[fonte],
@@ -200,7 +206,7 @@ $("reset").addEventListener("click", () => {
 // Passo 2: "Cores da logo" faz cada parte acender os nós em volta com a sua cor (trocável).
 // Os controles só aparecem quando a imagem tem mais de uma cor relevante.
 const temCoresLogo = () => estado.fonte === "imagem" && paletaLogo.length > 1;
-const usaCoresLogo = () => temCoresLogo() && estado.multicor;
+const usaCoresLogo = () => temCoresLogo() && estado.multicor && !estado.inverter;
 // cor de brilho da parte i: a escolhida, a sugerida pelo servidor ou (cores neutras) a cor principal
 const corDaParte = (i) => estado.cores_arte[i] || estado.cor;
 
@@ -208,7 +214,7 @@ function novaPaleta(cores) {
   paletaLogo = Array.isArray(cores) ? cores.slice(0, 6) : [];
   estado.cores_off = [];
   estado.cores_arte = paletaLogo.map((c) => c.arte);
-  if (paletaLogo.length < 2) estado.multicor = false;
+  estado.multicor = paletaLogo.length >= 2 && prefereMulticor;
   desenharCoresLogo();
 }
 
@@ -220,7 +226,7 @@ function desenharCoresLogo() {
     b.type = "button"; b.className = "chip-cor"; b.dataset.parte = i;
     const bola = document.createElement("i");
     bola.style.background = c.hex;
-    b.append(bola, `${Math.max(1, Math.round(c.parte * 100))}%`);
+    b.append(bola, pct(Math.max(1, Math.round(c.parte * 100)) / 100));
     b.addEventListener("click", () => alternarCorLogo(i));
     chips.append(b);
 
@@ -247,7 +253,10 @@ function desenharCoresLogo() {
 function sincronizarCoresLogo() {
   const tem = temCoresLogo(), usa = usaCoresLogo();
   $("coresLogo").hidden = !tem;
-  $("corLogo").hidden = !tem;
+  $("corLogo").hidden = !tem || estado.inverter;
+  $("chipsLogo").hidden = estado.inverter;
+  if (estado.inverter) marcar($("dicaCoresLogo"), "p1.cores_inverter");
+  else if ($("dicaCoresLogo").dataset.i18n === "p1.cores_inverter") marcar($("dicaCoresLogo"), "p1.cores_dica");
   $("corLogo").classList.toggle("on", usa);
   $("corLogo").setAttribute("aria-pressed", String(usa));
   $("coresArte").hidden = !usa;
@@ -282,7 +291,7 @@ function alternarCorLogo(i) {
   sincronizarCoresLogo(); atualizarForma(); mudou();
 }
 
-$("corLogo").addEventListener("click", () => { estado.multicor = !estado.multicor; sincronizar(); mudou(); });
+$("corLogo").addEventListener("click", () => { definirMulticor(!estado.multicor); sincronizar(); mudou(); });
 
 // ---------- ganhe sats ----------
 async function carregarInfo() {
@@ -310,6 +319,7 @@ async function carregarInfo() {
 }
 // textos que dependem do que o servidor informou (refeitos quando o idioma muda)
 function textosInfo() {
+  $("bountyPct").textContent = pct((INFO.bounty_percentual || 70) / 100);
   marcar($("tutTitulo"), INFO.recompensas ? "tut.titulo" : "tut.titulo_sem");
   if (!INFO.recompensas) return;
   const seq = INFO.recompensas_seq;
@@ -370,7 +380,7 @@ $("exportar").addEventListener("click", async () => {
   const btn = $("exportar"), msg = $("msgExport");
   btn.disabled = true; $("dica").hidden = true; mensagem(msg, K("exp.desenhando"));
   try {
-    const corpo = { ...estado, largura: parseInt($("largura").value), nome: $("nome").value.trim() };
+    const corpo = { ...pedido(), largura: parseInt($("largura").value), nome: $("nome").value.trim() };
     const r = await postJSON("/api/exportar", corpo);
     if (!r.ok) throw new Error((await r.json()).erro || r.statusText);
     const nome = r.headers.get("X-Nome-Arquivo") || "rede.png";
@@ -597,7 +607,6 @@ function configurarLinks() {
   const email = INFO.bounty_email || "";
   $("bountyEmail").textContent = email;
   $("bountyEmail").href = "mailto:" + email + "?subject=" + encodeURIComponent("Bug bounty - Rede de Nós");
-  $("bountyPct").textContent = (INFO.bounty_percentual || 70) + "%";
   $("bountyRepo").hidden = !INFO.repo_url;
   if (INFO.repo_url) $("bountyRepo").querySelector("a").href = INFO.repo_url.replace(/\/$/, "") + "/blob/main/SECURITY.md";
 }
@@ -721,7 +730,7 @@ async function gerarDoacao(sats) {
     $("abrirCarteira").href = "lightning:" + j.bolt11;
     $("doarInvoice").hidden = false;
     $("doarEndereco").hidden = true;  // um QR por vez, para não confundir
-    mensagem($("msgDoar"), K("doar.aguardando", { n: num(sats) }));
+    mensagem($("msgDoar"), K("doar.aguardando", { n: sats }));
     let tentativas = 0;
     pollDoacao = setInterval(async () => {
       if (++tentativas > 120) { clearInterval(pollDoacao); return; }
@@ -730,7 +739,7 @@ async function gerarDoacao(sats) {
         if (s.pago) {
           clearInterval(pollDoacao);
           $("doarInvoice").hidden = true;
-          mensagem($("msgDoar"), K("doar.obrigado", { n: num(sats) }), "sucesso");
+          mensagem($("msgDoar"), K("doar.obrigado", { n: sats }), "sucesso");
           chuvaDeSats(10);
           carregarInfo();
         }
@@ -750,6 +759,7 @@ document.querySelectorAll("[data-copiar]").forEach((b) => b.addEventListener("cl
 function trocarIdioma(l) {
   guardar("idioma", l); definirIdioma(l);
   textosInfo(); atualizarBotao();
+  sincronizar(); desenharCoresLogo();  // números dos controles e % das cores no formato do idioma
   if (!$("modalCompartilhar").hidden) textoConvite();
 }
 document.querySelectorAll("[data-idioma]").forEach((b) => b.addEventListener("click", () => trocarIdioma(b.dataset.idioma)));
