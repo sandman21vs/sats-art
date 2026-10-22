@@ -100,6 +100,8 @@ def construir_rede(make_holes, cfg: Config) -> Rede:
         hs = list(holes.geoms) if hasattr(holes, "geoms") else [holes]
         disc = Point(CX, CY).buffer(R - 7, 256)
         rings += [h.exterior for h in hs if not disc.contains(h)]
+        # e os furos de dentro do símbolo (miolo de um anel, triângulo de um A)
+        rings += [i for h in hs for i in h.interiors]
     # área onde os fios podem passar: tudo menos o símbolo (e, com círculo, só dentro dele)
     inside = prep((region if circulo else box(0, 0, W, H).difference(holes)).buffer(1.5))
 

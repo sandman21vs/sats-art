@@ -206,3 +206,18 @@ def test_api_imagem_devolve_cores(monkeypatch, tmp_path):
     r, j, ruim, boa, prev = asyncio.run(chamar())
     assert r.status_code == 200 and sorted(c["hex"] for c in j["cores"]) == ["#7fe0ff", "#e2342b", "#ffe14d"]
     assert ruim.status_code == 400 and boa.status_code == 200 and prev.status_code == 200
+
+
+def test_sem_circulo_contorna_os_furos_do_simbolo():
+    # anel com um furo no meio: sem o disco, o furo também precisa ganhar contorno de nós
+    from shapely.geometry import Point
+    from motor.rede_nos import Config, construir_rede
+    anel = Point(0, 0).buffer(200).difference(Point(0, 0).buffer(120))
+
+    def make_holes(cx, cy, angle):
+        from shapely.affinity import translate
+        return translate(anel, cx, cy)
+    for circulo in (True, False):
+        rede = construir_rede(make_holes, Config(circulo=circulo))
+        furo = Point(rede.CX, rede.CY).buffer(120)
+        assert any(r.length > 700 and furo.exterior.hausdorff_distance(r) < 1 for r in rede.rings), circulo
