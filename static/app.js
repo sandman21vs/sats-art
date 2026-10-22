@@ -22,7 +22,7 @@ const rotulo = (lado, nome) => `${nome} · ${dimensoes(lado).join("×")}`;
 const ANGULO_PADRAO = { sat: -21, imagem: 0 };
 const PADRAO = { fonte: "sat", retrato: false, angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
   malha: 14, poeira_longe: 0.22, halo: 110, cor: "#ff6600", brilho: 1, fundo: 1, limiar: 60, inverter: false,
-  cores_off: [], multicor: false, cores_arte: [] };
+  cores_off: [], multicor: false, cores_arte: [], limpar_fundo: false, pontos_fundo: [] };
 
 const guardado = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) ?? padrao; } catch (e) { return padrao; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -156,6 +156,7 @@ async function carregarImagem(blob) {
   marcar($("dropTxt"), "p1.drop_trocar");
   estado.imagem_id = j.id;
   estado.fonte = "imagem"; estado.angulo = 0;
+  imagemNova(blob, j);
   novaPaleta(j.cores);
   document.querySelector('[data-fonte="imagem"]').disabled = false;
   sincronizar(); atualizarForma(); mudou();
@@ -168,6 +169,7 @@ async function atualizarForma() {
   const r = await postJSON("/api/forma", pedido());
   const png = r.ok ? await r.blob() : null;
   if (n !== pedidoForma) return;
+  if (r.ok) coresDaForma(r);
   if (r.ok) $("shape").src = URL.createObjectURL(png);
   else erroNoStatus((await r.json()).erro);
 }
@@ -181,7 +183,7 @@ document.addEventListener("drop", (e) => carregarImagem(e.dataTransfer.files[0])
 document.addEventListener("paste", (e) => {
   if (e.target.matches?.("input[type=text], input[type=number]")) return;
   const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
-  if (item) carregarImagem(item.getAsFile());
+  if (item) { colouPrint = true; carregarImagem(item.getAsFile()); }
 });
 
 $("limiar").addEventListener("input", (e) => { estado.limiar = parseInt(e.target.value); $("v-limiar").textContent = num(estado.limiar); atualizarForma(); mudou(); });
@@ -195,8 +197,8 @@ $("seed").addEventListener("change", (e) => { estado.seed = parseInt(e.target.va
 $("sortear").addEventListener("click", () => { estado.seed = Math.floor(Math.random() * 100000); $("seed").value = estado.seed; mudou(); });
 $("cor").addEventListener("input", (e) => { estado.cor = e.target.value; if (estado.multicor) definirMulticor(false); sincronizar(); mudou(); });
 $("reset").addEventListener("click", () => {
-  const { fonte, imagem_id, limiar, inverter, retrato, cores_off } = estado;  // o formato escolhido fica
-  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, cores_off, angulo: ANGULO_PADRAO[fonte],
+  const { fonte, imagem_id, limiar, inverter, retrato, cores_off, limpar_fundo, pontos_fundo } = estado;  // o formato escolhido fica
+  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, cores_off, limpar_fundo, pontos_fundo, angulo: ANGULO_PADRAO[fonte],
     cores_arte: paletaLogo.map((c) => c.arte) };
   sincronizar(); mudou();
 });
@@ -292,6 +294,194 @@ function alternarCorLogo(i) {
 }
 
 $("corLogo").addEventListener("click", () => { definirMulticor(!estado.multicor); sincronizar(); mudou(); });
+
+// ---------- fundo e recorte da imagem ----------
+// "Remover fundo": o servidor compara cada pixel com um fundo que varia suavemente (degradê,
+// vinheta, sombra). Liga sozinho quando o upload detecta fundo irregular.
+// "Tocar no fundo": a pessoa toca na imagem onde é fundo; a cor desses pontos também vira fundo.
+// "Recortar": um retângulo com alças sobre a imagem; o recorte é feito aqui e reenviado.
+// Os pontos e o recorte usam o mesmo canvas (#editorCanvas), em dois modos.
+const MAX_PONTOS = 8;
+const MAX_LADO_RECORTE = 1600;  // o servidor reduz a 1024 de qualquer jeito
+Object.assign(estado, { limpar_fundo: false, pontos_fundo: [] });  // valem só para a imagem desta sessão
+let colouPrint = false;   // a próxima imagem veio de Ctrl/⌘+V
+let imgEditor = null;     // a imagem enviada, para desenhar no editor
+let modoEditor = null;    // "fundo" | "recorte" | null
+let recorte = null;       // { x, y, w, h } em frações da imagem
+let geomEditor = null;    // { w, h }: tamanho do canvas na tela (px CSS)
+
+function imagemNova(blob, j) {
+  estado.limpar_fundo = j.fundo_irregular === true;
+  estado.pontos_fundo = [];
+  const print = colouPrint || /screen ?shot|captura|bildschirmfoto|^image\.png$/i.test(blob.name || "");
+  colouPrint = false;
+  fecharEditor();
+  const img = new Image();
+  img.onload = () => {
+    imgEditor = img;
+    // print da tela (colado ou com nome de captura) grande: já abre o recorte
+    if (print && Math.max(img.naturalWidth, img.naturalHeight) > 1000) abrirEditor("recorte");
+  };
+  img.src = URL.createObjectURL(blob);
+}
+
+function sincronizarFundo() {
+  const n = estado.pontos_fundo.length;
+  $("limparFundo").classList.toggle("on", estado.limpar_fundo);
+  $("limparFundo").setAttribute("aria-pressed", String(estado.limpar_fundo));
+  $("tocarFundo").classList.toggle("on", modoEditor === "fundo" || n > 0);
+  $("tocarFundo").setAttribute("aria-pressed", String(modoEditor === "fundo"));
+  $("recortar").classList.toggle("on", modoEditor === "recorte");
+  $("recortar").setAttribute("aria-pressed", String(modoEditor === "recorte"));
+  $("nPontos").hidden = n === 0; $("nPontos").textContent = n;
+  $("dicaFundo").hidden = !estado.limpar_fundo;
+  if (estado.limpar_fundo) marcar($("dicaFundo"), "p1.fundo_ligado");
+}
+
+// as cores mudam com o fundo removido ou com os pontos: o servidor manda as novas no cabeçalho
+function coresDaForma(r) {
+  let cores;
+  try { cores = JSON.parse(r.headers.get("X-Cores") || "null"); } catch (e) { return; }
+  if (!Array.isArray(cores) || cores.map((c) => c.hex).join() === paletaLogo.map((c) => c.hex).join()) return;
+  const tinhaOff = estado.cores_off.length > 0;
+  novaPaleta(cores); sincronizar();
+  if (tinhaOff) { atualizarForma(); mudou(); }  // os índices desligados eram da paleta antiga
+}
+
+function mudouFundo() { sincronizarFundo(); atualizarForma(); mudou(); }
+
+$("limparFundo").addEventListener("click", () => { estado.limpar_fundo = !estado.limpar_fundo; mudouFundo(); });
+$("tocarFundo").addEventListener("click", () => (modoEditor === "fundo" ? fecharEditor() : abrirEditor("fundo")));
+$("recortar").addEventListener("click", () => (modoEditor === "recorte" ? fecharEditor() : abrirEditor("recorte")));
+
+function abrirEditor(modo) {
+  if (!imgEditor) return;
+  modoEditor = modo;
+  if (modo === "recorte") recorte = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
+  const ed = $("editorImg");
+  ed.hidden = false; ed.classList.toggle("recorte", modo === "recorte");
+  marcar($("editorDica"), modo === "recorte" ? "p1.recorte_dica" : "p1.fundo_dica", { n: MAX_PONTOS });
+  $("editorLimpar").hidden = modo !== "fundo";
+  $("editorCancelar").hidden = modo !== "recorte";
+  marcar($("editorOk"), modo === "recorte" ? "p1.recortar_ok" : "p1.pronto");
+  desenharEditor(); sincronizarFundo();
+  ed.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function fecharEditor() {
+  modoEditor = null; recorte = null; arrasto = null;
+  $("editorImg").hidden = true;
+  sincronizarFundo();
+}
+
+function desenharEditor() {
+  const cv = $("editorCanvas"), img = imgEditor;
+  if (!img || !modoEditor) return;
+  const largura = (cv.parentElement.clientWidth || 316) - 16;
+  const esc = Math.min(largura / img.naturalWidth, (innerHeight * (innerWidth < 760 ? 0.38 : 0.55)) / img.naturalHeight, 4);
+  const w = Math.max(1, Math.round(img.naturalWidth * esc)), h = Math.max(1, Math.round(img.naturalHeight * esc));
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  cv.style.width = w + "px"; cv.style.height = h + "px";
+  geomEditor = { w, h };
+  const c = cv.getContext("2d");
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  c.drawImage(img, 0, 0, w, h);
+  if (modoEditor === "fundo") {
+    for (const [u, v] of estado.pontos_fundo) {
+      c.beginPath(); c.arc(u * w, v * h, 9, 0, Math.PI * 2);
+      c.fillStyle = "#ff660055"; c.fill();
+      c.lineWidth = 4; c.strokeStyle = "#0e0d0d"; c.stroke();
+      c.lineWidth = 2; c.strokeStyle = "#ff6600"; c.stroke();
+      c.beginPath(); c.arc(u * w, v * h, 2.5, 0, Math.PI * 2); c.fillStyle = "#fff"; c.fill();
+    }
+  } else if (recorte) {
+    const x = recorte.x * w, y = recorte.y * h, rw = recorte.w * w, rh = recorte.h * h;
+    c.fillStyle = "#000000a0";
+    c.beginPath(); c.rect(0, 0, w, h); c.rect(x, y, rw, rh); c.fill("evenodd");
+    c.lineWidth = 2; c.strokeStyle = "#ff6600"; c.strokeRect(x, y, rw, rh);
+    c.lineWidth = 1; c.strokeStyle = "#ffffff55";
+    for (const f of [1 / 3, 2 / 3]) {  // terços, para ajudar a centralizar
+      c.beginPath(); c.moveTo(x + rw * f, y); c.lineTo(x + rw * f, y + rh); c.moveTo(x, y + rh * f); c.lineTo(x + rw, y + rh * f); c.stroke();
+    }
+    c.fillStyle = "#fff"; c.strokeStyle = "#ff6600"; c.lineWidth = 2;
+    for (const [px, py] of [[x, y], [x + rw, y], [x, y + rh], [x + rw, y + rh]]) {
+      c.beginPath(); c.arc(px, py, 7, 0, Math.PI * 2); c.fill(); c.stroke();
+    }
+  }
+}
+
+// ponteiro (mouse, toque ou caneta) em frações da imagem
+function posEditor(e) {
+  const r = $("editorCanvas").getBoundingClientRect();
+  return { u: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), v: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+}
+
+let arrasto = null;  // { alca: "nw"|"ne"|"sw"|"se"|"mover", u0, v0, r0 }
+$("editorCanvas").addEventListener("pointerdown", (e) => {
+  if (!modoEditor || !geomEditor) return;
+  e.preventDefault();
+  const { u, v } = posEditor(e), { w, h } = geomEditor;
+  if (modoEditor === "fundo") {
+    // tocar perto de um ponto tira o ponto; senão marca um novo
+    const perto = estado.pontos_fundo.findIndex(([pu, pv]) => Math.hypot((pu - u) * w, (pv - v) * h) < 14);
+    if (perto >= 0) estado.pontos_fundo.splice(perto, 1);
+    else if (estado.pontos_fundo.length < MAX_PONTOS) estado.pontos_fundo.push([+u.toFixed(3), +v.toFixed(3)]);
+    else { marcar($("editorDica"), "p1.fundo_max", { n: MAX_PONTOS }); return; }
+    marcar($("editorDica"), "p1.fundo_dica", { n: MAX_PONTOS });
+    desenharEditor(); mudouFundo();
+    return;
+  }
+  const r = recorte, tol = e.pointerType === "touch" ? 26 : 14;
+  const cantos = { nw: [r.x, r.y], ne: [r.x + r.w, r.y], sw: [r.x, r.y + r.h], se: [r.x + r.w, r.y + r.h] };
+  let alca = Object.keys(cantos).find((k) => Math.hypot((cantos[k][0] - u) * w, (cantos[k][1] - v) * h) < tol);
+  if (!alca) alca = u > r.x && u < r.x + r.w && v > r.y && v < r.y + r.h ? "mover" : "novo";
+  if (alca === "novo") { recorte = { x: u, y: v, w: 0, h: 0 }; alca = "se"; }  // arrastar fora desenha outro
+  arrasto = { alca, u0: u, v0: v, r0: { ...recorte } };
+  try { $("editorCanvas").setPointerCapture(e.pointerId); } catch (err) {}
+});
+$("editorCanvas").addEventListener("pointermove", (e) => {
+  if (!arrasto || modoEditor !== "recorte") return;
+  e.preventDefault();
+  const { u, v } = posEditor(e), { alca, u0, v0, r0 } = arrasto;
+  const min = 24 / Math.max(geomEditor.w, geomEditor.h);  // o retângulo não some
+  let x0 = r0.x, y0 = r0.y, x1 = r0.x + r0.w, y1 = r0.y + r0.h;
+  if (alca === "mover") {
+    const dx = Math.min(1 - x1, Math.max(-x0, u - u0)), dy = Math.min(1 - y1, Math.max(-y0, v - v0));
+    x0 += dx; x1 += dx; y0 += dy; y1 += dy;
+  } else {
+    if (alca.includes("w")) x0 = Math.min(u, x1 - min); else x1 = Math.max(u, x0 + min);
+    if (alca.includes("n")) y0 = Math.min(v, y1 - min); else y1 = Math.max(v, y0 + min);
+  }
+  x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(1, x1); y1 = Math.min(1, y1);
+  recorte = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  desenharEditor();
+});
+["pointerup", "pointercancel"].forEach((ev) => $("editorCanvas").addEventListener(ev, () => { arrasto = null; }));
+
+$("editorLimpar").addEventListener("click", () => {
+  if (!estado.pontos_fundo.length) return;
+  estado.pontos_fundo = []; desenharEditor(); mudouFundo();
+});
+$("editorCancelar").addEventListener("click", fecharEditor);
+$("editorOk").addEventListener("click", () => (modoEditor === "recorte" ? aplicarRecorte() : fecharEditor()));
+addEventListener("resize", () => { if (modoEditor) desenharEditor(); });
+
+function aplicarRecorte() {
+  const img = imgEditor, r = recorte;
+  if (!img || !r) return;
+  const sx = Math.round(r.x * img.naturalWidth), sy = Math.round(r.y * img.naturalHeight);
+  const sw = Math.max(1, Math.round(r.w * img.naturalWidth)), sh = Math.max(1, Math.round(r.h * img.naturalHeight));
+  const f = Math.min(1, MAX_LADO_RECORTE / Math.max(sw, sh));
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.round(sw * f)); cv.height = Math.max(1, Math.round(sh * f));
+  cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  fecharEditor();
+  cv.toBlob((b) => { if (b) carregarImagem(b); }, "image/png");
+}
 
 // ---------- ganhe sats ----------
 async function carregarInfo() {

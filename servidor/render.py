@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from shapely.affinity import affine_transform, scale, translate
 
-from motor.forma_imagem import (MAX_CORES, ImagemInvalida, analisar, forma_normalizada, holes_de_forma,
+from motor.forma_imagem import (MAX_CORES, MAX_PONTOS_FUNDO, ImagemInvalida, analisar, forma_normalizada, holes_de_forma,
                                 mascara, reduzir, regioes_na_tela)
 from motor.rede_nos import Config, campo_de_cores, construir_rede, dimensoes, pintar
 from motor.simbolos import SIMBOLOS
@@ -129,6 +129,28 @@ def _cores_off(v):
     return tuple(sorted(set(v)))
 
 
+def _fundo(p):
+    """Opções de fundo da imagem: `limpar_fundo` (bool, "Remover fundo") e `pontos_fundo`, até
+    MAX_PONTOS_FUNDO pontos [x, y] entre 0 e 1 que a pessoa tocou dizendo "isto é fundo".
+    Os pontos são arredondados e ordenados: a mesma escolha dá a mesma chave de cache."""
+    erro = ParametroInvalido("Ajuste de fundo da imagem inválido.")
+    limpar, pontos = p.get("limpar_fundo", False), p.get("pontos_fundo")
+    if not isinstance(limpar, bool):
+        raise erro
+    if pontos is None:
+        return limpar, ()
+    if not isinstance(pontos, list) or len(pontos) > MAX_PONTOS_FUNDO:
+        raise erro
+    ok = set()
+    for pt in pontos:
+        if not isinstance(pt, list) or len(pt) != 2 or \
+                any(isinstance(c, bool) or not isinstance(c, (int, float)) or not math.isfinite(c) or not 0 <= c <= 1
+                    for c in pt):
+            raise erro
+        ok.add((round(float(pt[0]), 3), round(float(pt[1]), 3)))
+    return limpar, tuple(sorted(ok))
+
+
 def _numero(nome, v):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise ParametroInvalido(f"Parâmetro {nome} inválido.")
@@ -142,8 +164,10 @@ def _numero(nome, v):
 class Renderizador:
     def __init__(self, workers=1, max_fila=8):
         self.imagens = LRU(500, max_bytes=64 * 1024 * 1024)  # id -> PNG reduzido (≤1024px)
-        self.formas = LRU(300)    # (id, limiar, inverter, cores_off) -> (forma normalizada, Regioes)
-        self.analises = LRU(32)   # id -> Analise (≈2 MB cada: distância ao fundo e cor de cada pixel)
+        self.formas = LRU(300)    # (id, limiar, inverter, cores_off, limpar_fundo, pontos) -> (forma, Regioes)
+        # id -> Analise (≈2 MB cada: distância ao fundo e cor de cada pixel); com as opções de
+        # fundo, a chave é (id, limpar_fundo, pontos)
+        self.analises = LRU(32)
         self.redes = LRU(4)       # chave -> Rede
         self.sem = asyncio.Semaphore(workers)
         self.max_fila = workers + max_fila
@@ -158,19 +182,48 @@ class Renderizador:
         self.imagens.por(img_id, reduzida)
         return img_id
 
-    def analise(self, img_id, dados):
-        """Análise de cor da imagem (feita uma vez; refeita só se saiu do cache)."""
-        a = self.analises.pegar(img_id)
+    @staticmethod
+    def _chave_analise(img_id, limpar=False, pontos=()):
+        return img_id if not limpar and not pontos else (img_id, limpar, pontos)
+
+    def analise(self, img_id, dados, limpar=False, pontos=()):
+        """Análise de cor da imagem (feita uma vez por imagem e opções de fundo; refeita só se
+        saiu do cache)."""
+        chave = self._chave_analise(img_id, limpar, pontos)
+        a = self.analises.pegar(chave)
         if a is None:
-            a = analisar(dados)
-            self.analises.por(img_id, a)
+            a = analisar(dados, limpar, pontos)
+            self.analises.por(chave, a)
         return a
 
     def _guardar_e_analisar(self, dados):
-        """Upload: reduz, guarda e já analisa as cores (a página mostra os chips na hora)."""
+        """Upload: reduz, guarda e já analisa as cores (a página mostra os chips na hora).
+        Fundo em degradê/vinheta (ou borda sem uma cor dominante): as cores já saem com o fundo
+        removido, porque a página liga "Remover fundo" sozinha (veja fundo_irregular)."""
         img_id = self.guardar_imagem(dados)
         reduzida = self.imagens.pegar(img_id)
-        return img_id, (self.analise(img_id, reduzida).cores() if reduzida is not None else [])
+        if reduzida is None:
+            return img_id, []
+        a = self.analise(img_id, reduzida)
+        if a.fundo_irregular:
+            a = self.analise(img_id, reduzida, True)
+        return img_id, a.cores()
+
+    def fundo_irregular(self, img_id):
+        """A análise do upload sugere ligar "Remover fundo"? (só lê o cache)"""
+        a = self.analises.pegar(img_id)
+        return bool(a is not None and a.fundo_irregular)
+
+    def cores_de(self, p):
+        """Cores da análise já feita para estas opções de fundo (None se não está no cache).
+        A página usa para atualizar os chips quando liga "Remover fundo" ou toca no fundo."""
+        try:
+            limpar, pontos = _fundo(p) if isinstance(p, dict) else (False, ())
+        except ParametroInvalido:
+            return None
+        img_id = p.get("imagem_id") if isinstance(p, dict) else None
+        a = self.analises.pegar(self._chave_analise(img_id, limpar, pontos)) if isinstance(img_id, str) else None
+        return a.cores() if a is not None else None
 
     @staticmethod
     def ler_config(p):
@@ -213,11 +266,12 @@ class Renderizador:
                     or not isinstance(inverter, bool):
                 raise ParametroInvalido("Ajuste de imagem inválido.")
             cores_off = _cores_off(p.get("cores_off"))
-            chave = (img_id, limiar, inverter, cores_off)
+            limpar, pontos = _fundo(p)
+            chave = (img_id, limiar, inverter, cores_off, limpar, pontos)
             par = self.formas.pegar(chave)
             analise = None
             if par is None or com_regioes:
-                analise = self.analise(img_id, dados)
+                analise = self.analise(img_id, dados, limpar, pontos)
             if par is None:
                 par = forma_normalizada(analise, limiar, inverter, cores_off, com_regioes=True)
                 self.formas.por(chave, par)
