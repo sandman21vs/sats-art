@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS doacoes (
     hash TEXT PRIMARY KEY, sats INTEGER NOT NULL, pago INTEGER NOT NULL DEFAULT 0, criado REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS estado (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
+-- contadores baratos para o painel: artes por dia ("2026-01-31") e erros por hora ("2026-01-31 14")
+CREATE TABLE IF NOT EXISTS contadores (
+    periodo TEXT NOT NULL, nome TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (periodo, nome)
+);
+CREATE TABLE IF NOT EXISTS relatos (id INTEGER PRIMARY KEY AUTOINCREMENT, criado REAL NOT NULL, texto TEXT NOT NULL);
 """
 
 # O saldo da Coinos pode chegar atrasado (cache do lado dela): na reserva, os pagamentos
@@ -231,6 +236,30 @@ class DB:
         self.ex("INSERT INTO estado(chave, valor) VALUES (?, ?) "
                 "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor", chave, str(valor))
 
+    # ---------- painel admin ----------
+    def contar(self, periodo, nome):
+        self.ex("INSERT INTO contadores(periodo, nome, n) VALUES (?, ?, 1) "
+                "ON CONFLICT(periodo, nome) DO UPDATE SET n = n + 1", periodo, nome)
+
+    def contadores(self, nome_like, desde):
+        """[(periodo, nome, n)] com periodo >= desde."""
+        with self.trava:
+            return self.con.execute("SELECT periodo, nome, n FROM contadores WHERE nome LIKE ? AND periodo >= ? "
+                                    "ORDER BY periodo", (nome_like, desde)).fetchall()
+
+    def sats_por_dia(self, desde):
+        with self.trava:
+            return self.con.execute("SELECT dia, COALESCE(SUM(sats), 0), COUNT(*) FROM resgates "
+                                    "WHERE status = 'pago' AND dia >= ? GROUP BY dia ORDER BY dia",
+                                    (desde,)).fetchall()
+
+    def guardar_relato(self, texto):
+        self.ex("INSERT INTO relatos(criado, texto) VALUES (?, ?)", time.time(), texto[:2000])
+
+    def ultimos_relatos(self, n=20):
+        with self.trava:
+            return self.con.execute("SELECT criado, texto FROM relatos ORDER BY id DESC LIMIT ?", (n,)).fetchall()
+
     # ---------- limpeza ----------
     def limpar(self, token_ttl_s=1800, pow_ttl_s=600, retencao_dias=30):
         """Apaga o que não serve mais. Resgates concluídos (endereço + hash do IP) e doações
@@ -246,6 +275,9 @@ class DB:
                                  limite).rowcount
                          + self.ex("DELETE FROM resgates WHERE criado < ?",
                                    agora - max(2, retencao_dias) * 6 * 86400).rowcount)
+        n["contadores"] = self.ex("DELETE FROM contadores WHERE periodo < ?",
+                                  time.strftime("%Y-%m-%d", time.gmtime(agora - 40 * 86400))).rowcount
+        n["relatos"] = self.ex("DELETE FROM relatos WHERE criado < ?", agora - 14 * 86400).rowcount
         semana = time.strftime("%Y-%m-%d", time.gmtime(agora - 7 * 86400))
         self.ex("DELETE FROM estado WHERE chave LIKE 'pausa_recompensas:%' AND chave < ?",
                 "pausa_recompensas:" + semana)

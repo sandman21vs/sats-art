@@ -6,6 +6,7 @@
 #      ./configurar.sh mudar NOME muda uma variável
 #      ./configurar.sh segredos   gera os segredos que estão vazios
 #      ./configurar.sh telegram   liga o botão "Reportar problema"
+#      ./configurar.sh admin      liga o painel /admin (gera o ADMIN_TOKEN)
 #      ./configurar.sh aplicar    confere e reinicia o site com o .env novo
 #
 # Antes de mudar, guarda uma cópia em .env.bak-configurar-<data> (ficam as 5 últimas).
@@ -100,6 +101,8 @@ validar() {
       re='^[0-9]+:[A-Za-z0-9_-]+$'; [[ $v =~ $re ]] || { echo "O token do @BotFather tem o formato 123456:ABC..."; return 1; } ;;
     TELEGRAM_CHAT_ID)
       re='^-?[0-9]+$'; [[ $v =~ $re ]] || { echo "O chat id é um número (grupos começam com -)."; return 1; } ;;
+    ADMIN_TOKEN)
+      [ "${#v}" -ge 16 ] || { echo "Precisa de 16 caracteres ou mais (digite g para gerar)."; return 1; } ;;
     PROXY_SECRET|POW_HMAC_KEY|IP_SALT)
       [ "${#v}" -ge 32 ] || { echo "Precisa de 32 caracteres ou mais (digite g para gerar)."; return 1; } ;;
     *)
@@ -193,7 +196,7 @@ mudar() {
   echo "  Atual: $(mostrar_valor "$n")"
   no_exemplo "$n" && [ -n "$(padrao "$n")" ] && ! eh_segredo "$n" && echo "  Padrão: $(padrao "$n")"
   echo "  Enter mantém o valor atual; - deixa vazio."
-  case "$n" in PROXY_SECRET|POW_HMAC_KEY|IP_SALT) echo "  g gera um segredo novo." ;; esac
+  case "$n" in PROXY_SECRET|POW_HMAC_KEY|IP_SALT|ADMIN_TOKEN) echo "  g gera um segredo novo." ;; esac
 
   while true; do
     if eh_segredo "$n"; then
@@ -203,7 +206,7 @@ mudar() {
     fi
     [ -z "$novo" ] && { echo "Nada mudou."; return; }
     [ "$novo" = "-" ] && novo=""
-    case "$n" in PROXY_SECRET|POW_HMAC_KEY|IP_SALT) [ "$novo" = "g" ] && novo=$(gerar_segredo) ;; esac
+    case "$n" in PROXY_SECRET|POW_HMAC_KEY|IP_SALT|ADMIN_TOKEN) [ "$novo" = "g" ] && novo=$(gerar_segredo) ;; esac
     if msg=$(validar "$n" "$novo"); then break; fi
     erro "$msg"
   done
@@ -223,6 +226,19 @@ segredos() {
   done
   [ $gerou = 0 ] && echo "Nenhum segredo vazio."
   return 0
+}
+
+# ---------- painel admin ----------
+admin() {
+  local atual novo r; atual=$(valor ADMIN_TOKEN)
+  if [ -n "$atual" ]; then
+    read -rp "O painel já está ligado. Gerar um token novo (o antigo deixa de valer)? [s/N] " r
+    [[ $r =~ ^[sS] ]] || return
+  fi
+  novo=$(gerar_segredo)
+  gravar ADMIN_TOKEN "$novo" || return 1
+  ok "Painel ligado em /admin. Token de acesso (aparece só agora, guarde):"
+  echo "  $novo"
 }
 
 # ---------- Telegram ----------
@@ -351,6 +367,7 @@ menu() {
     echo "  3) Gerar os segredos que estão vazios"
     echo "  4) Ligar o botão de reportar (Telegram)"
     echo "  5) Aplicar: conferir e reiniciar o site"
+    echo "  6) Ligar o painel admin (/admin)"
     echo "  0) Sair"
     read -rp "Escolha: " op || break
     case "$op" in
@@ -359,6 +376,7 @@ menu() {
       3) segredos ;;
       4) telegram ;;
       5) aplicar ;;
+      6) admin ;;
       0|"") break ;;
       *) erro "Opção inválida." ;;
     esac
@@ -373,7 +391,8 @@ case "${1:-}" in
   mudar) mudar "${2:-}"; perguntar_aplicar ;;
   segredos) segredos; perguntar_aplicar ;;
   telegram) telegram; perguntar_aplicar ;;
+  admin) admin; perguntar_aplicar ;;
   aplicar) aplicar ;;
-  -h|--help|ajuda) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) erro "Comando desconhecido: $1"; sed -n '4,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  -h|--help|ajuda) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) erro "Comando desconhecido: $1"; sed -n '4,10p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

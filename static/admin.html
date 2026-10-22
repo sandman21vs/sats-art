@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin · Rede de Nós</title>
+<style>
+  :root {
+    --bg: #0e0d0d; --panel: #171515; --line: #2a2625; --text: #ece6e2; --muted: #9a8f88;
+    --accent: #ff6600; --accent-2: #ffb27f; --accent-soft: #ff66001f; --ok: #7fd18b; --erro: #ff7a7a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  [hidden] { display: none !important; }
+  main { max-width: 860px; margin: 0 auto; padding: 18px 16px 40px; }
+  h1 { font-size: 18px; margin: 0; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 13px; margin: 0 0 10px; color: var(--accent-2); text-transform: uppercase; letter-spacing: .06em; }
+  .topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .links { display: flex; gap: 8px; flex-wrap: wrap; }
+  a.botao, button { font: inherit; color: var(--text); background: #1f1c1b; border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer; text-decoration: none; }
+  a.botao:hover, button:hover { border-color: var(--accent); }
+  button.principal { background: var(--accent); border-color: var(--accent); color: #140a02; font-weight: 700; }
+  input { font: inherit; color: var(--text); background: #1f1c1b; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; width: 100%; }
+  input:focus { outline: 1px solid var(--accent); }
+  .cartao { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+  .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .grade .cartao { margin: 0; }
+  .numero { font-size: 26px; font-weight: 700; }
+  .numero.baixo { color: var(--erro); }
+  .muted { color: var(--muted); font-size: 12px; }
+  .login { max-width: 340px; margin: 12vh auto 0; }
+  .login form { display: grid; gap: 10px; margin-top: 12px; }
+  .erro { color: var(--erro); min-height: 1.4em; }
+  .barras { display: flex; align-items: flex-end; gap: 4px; height: 120px; margin-top: 6px; }
+  .barras .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; min-width: 0; }
+  .barras .b { width: 100%; min-height: 1px; background: var(--accent); border-radius: 3px 3px 0 0; }
+  .barras .b.sats { background: var(--ok); }
+  .barras .v { font-size: 10px; color: var(--muted); }
+  .eixo { display: flex; gap: 4px; }
+  .eixo span { flex: 1; text-align: center; font-size: 10px; color: var(--muted); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+  td.n { text-align: right; white-space: nowrap; width: 1%; font-variant-numeric: tabular-nums; }
+  .relato { border-top: 1px solid var(--line); padding: 8px 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+  .relato:first-of-type { border-top: 0; }
+  @media (max-width: 520px) { .barras .v { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <section id="entrar" class="login" hidden>
+    <h1>Rede de <span>Nós</span> · admin</h1>
+    <form id="formEntrar" autocomplete="off">
+      <input id="token" type="password" placeholder="Token de acesso" aria-label="Token de acesso" autocomplete="current-password" required>
+      <button class="principal" type="submit">Entrar</button>
+      <div id="erroEntrar" class="erro" role="alert"></div>
+    </form>
+  </section>
+
+  <section id="painel" hidden>
+    <div class="topo">
+      <h1>Rede de <span>Nós</span> · admin</h1>
+      <div class="links">
+        <a class="botao" href="/admin/galeria">Galeria</a>
+        <button id="atualizar" type="button">Atualizar</button>
+        <button id="sair" type="button">Sair</button>
+      </div>
+    </div>
+
+    <div class="grade">
+      <div class="cartao"><h2>Pote</h2><div id="pote" class="numero">–</div><div id="poteNota" class="muted"></div></div>
+      <div class="cartao"><h2>Artes (14 dias)</h2><div id="totalArtes" class="numero">–</div></div>
+      <div class="cartao"><h2>Resgates (14 dias)</h2><div id="totalResgates" class="numero">–</div><div id="pausa" class="muted"></div></div>
+      <div class="cartao"><h2>Sats pagos (14 dias)</h2><div id="totalSats" class="numero">–</div></div>
+    </div>
+
+    <div class="cartao"><h2>Artes criadas por dia</h2><div id="gArtes"></div></div>
+    <div class="cartao"><h2>Sats pagos por dia</h2><div id="gSats"></div></div>
+    <div class="cartao"><h2>Erros mais comuns (24 h)</h2><div id="erros"></div></div>
+    <div class="cartao"><h2>Últimos relatos</h2><div id="relatos"></div></div>
+    <div class="muted">Dias em UTC. Contagem de artes começa quando o painel foi ligado.</div>
+  </section>
+</main>
+<script src="/admin/admin.js"></script>
+</body>
+</html>

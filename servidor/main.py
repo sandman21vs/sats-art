@@ -19,7 +19,7 @@ import qrcode.image.svg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from . import antiabuso, eventos
+from . import admin, alertas, antiabuso, eventos
 from .eventos import evento
 from .coinos import Coinos, CoinosErro
 from .config import Config
@@ -57,6 +57,8 @@ db = DB(os.path.join(cfg.data_dir, "app.db"))
 coinos = Coinos(cfg.coinos_token, cfg.coinos_url) if cfg.recompensas_ativas else None
 recompensas = Recompensas(cfg, db, coinos) if coinos else None
 telegram = Telegram(cfg.telegram_token, cfg.telegram_chat_id) if cfg.reports_ativos else None
+if recompensas and telegram:
+    recompensas.ao_saldo = alertas.AlertaPote(cfg, db, telegram).verificar
 lim_export = antiabuso.Limitador(cfg.exports_por_10min, 600)
 lim_preview = antiabuso.Limitador(40, 60)
 lim_upload = antiabuso.Limitador(30, 600)
@@ -623,9 +625,14 @@ async def reportar(req: Request):
 
     try:
         await telegram.enviar("\n\n".join(partes))
+        db.guardar_relato("\n\n".join(partes))
     except TelegramErro as e:
         evento("report_falhou", "error", motivo=str(e), ip=pessoa)
         raise Recusado(502, "Não consegui enviar agora. Tente de novo em alguns minutos.") from e
     # o texto do relato vai só para o Telegram, nunca para o log (pode ter endereço, e-mail...)
     evento("report_enviado", tipos=tipos, caracteres=len(texto), contato=bool(contato), ip=pessoa)
     return {"ok": True}
+
+
+# ---------- painel admin (/admin; 404 sem ADMIN_TOKEN) ----------
+app.include_router(admin.criar_router(cfg, db, lambda: recompensas, ip_de, ler_json))

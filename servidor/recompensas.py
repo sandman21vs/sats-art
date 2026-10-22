@@ -56,6 +56,7 @@ class Recompensas:
         self._enderecos_ok = OrderedDict()     # endereço Coinos -> quando foi confirmado
         self._tarefas = set()                  # pagamentos em andamento (referência forte)
         self._travas_doacao = {}               # hash -> Lock (uma consulta por doação por vez)
+        self.ao_saldo = None                   # corrotina(saldo) chamada a cada leitura nova do saldo
 
     # ---------- pote ----------
     async def saldo(self, max_idade_s=60):
@@ -69,6 +70,7 @@ class Recompensas:
             if not recente():
                 valor = await self.coinos.saldo()
                 self._saldo = (time.time(), valor)
+                await self._avisar_saldo(valor)
             return self._saldo[1]
 
     async def saldo_agora(self):
@@ -77,7 +79,22 @@ class Recompensas:
             antes = time.time()
             valor = await self.coinos.saldo()
             self._saldo = (time.time(), valor)
+            await self._avisar_saldo(valor)
             return valor, antes
+
+    async def _avisar_saldo(self, valor):
+        """Alerta de pote baixo em segundo plano: o Telegram lento não segura a leitura do saldo."""
+        if not self.ao_saldo:
+            return
+
+        async def avisar():
+            try:
+                await self.ao_saldo(valor)
+            except Exception:
+                log.exception("falha no alerta de pote")
+        t = asyncio.create_task(avisar())
+        self._tarefas.add(t)
+        t.add_done_callback(self._tarefas.discard)
 
     def esquecer_saldo(self):
         self._saldo = (0.0, None)

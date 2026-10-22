@@ -62,6 +62,11 @@ class Config:
     telegram_token: str = field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", "").strip())
     telegram_chat_id: str = field(default_factory=lambda: os.environ.get("TELEGRAM_CHAT_ID", "").strip())
     reports_por_hora: int = field(default_factory=lambda: _int("REPORTS_PER_HOUR", 30))
+    # aviso no Telegram quando o pote cai abaixo disso (0 = desligado) e intervalo mínimo entre avisos
+    alerta_pote_sats: int = field(default_factory=lambda: _int("ALERTA_POTE_SATS", 500))
+    alerta_pote_horas: int = field(default_factory=lambda: _int("ALERTA_POTE_HORAS", 6))
+    # painel /admin: sem token, a rota responde 404
+    admin_token: str = field(default_factory=lambda: os.environ.get("ADMIN_TOKEN", "").strip())
 
     data_dir: str = field(default_factory=lambda: os.environ.get("DATA_DIR", "/data"))
     # modo local (app.py no seu computador): só nele as exportações são gravadas em disco
@@ -87,6 +92,8 @@ class Config:
                 "TRUST_PROXY=1 exige PROXY_SECRET (32+ caracteres) no .env, repassado pelo proxy "
                 "no cabeçalho X-Proxy-Secret. Sem ele, qualquer conexão da rede do Docker poderia "
                 "escolher o próprio IP. Veja o README.")
+        if self.admin_token and len(self.admin_token) < 16:
+            raise RuntimeError("ADMIN_TOKEN precisa de 16+ caracteres. Gere com: openssl rand -hex 24")
         if not self.recompensas_ativas:
             return
         faltando = [n for n in ("POW_HMAC_KEY", "IP_SALT") if len(os.environ.get(n, "")) < 32]

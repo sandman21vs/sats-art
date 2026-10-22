@@ -25,6 +25,7 @@ _aberto_em = None           # dia (UTC) em que o arquivo atual começou
 RUIDOSOS_POR_S = 10         # teto de linhas por segundo dos eventos ruidosos
 _balde = [float(RUIDOSOS_POR_S * 10), time.monotonic()]   # fichas, último reabastecimento
 _suprimidos = 0
+gancho = None               # função(nome, nivel, campos) chamada a cada evento (painel admin: contadores)
 
 
 def _permitir_ruidoso():
@@ -96,6 +97,11 @@ def evento(nome, nivel="info", ruidoso=False, **campos):
     ruidoso=True: evento que qualquer visitante gera à vontade (um por pedido); passa pelo
     teto de linhas por segundo. Os descartados aparecem em `suprimidos` na próxima linha."""
     global _suprimidos
+    if gancho:
+        try:
+            gancho(nome, nivel, campos)
+        except Exception:  # contar nunca pode derrubar o que está sendo registrado
+            pass
     if ruidoso:
         if not _permitir_ruidoso():
             return
