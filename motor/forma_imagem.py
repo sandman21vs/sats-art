@@ -159,8 +159,9 @@ class Analise:
     transparente); rotulos: uint8, a cor dominante mais próxima de cada pixel;
     paleta: [(r, g, b)] da maior para a menor; partes: fração do símbolo de cada cor."""
 
-    def __init__(self, dist, rotulos, alfa, paleta, partes):
+    def __init__(self, dist, rotulos, alfa, paleta, partes, fundo_irregular=False):
         self.dist, self.rotulos, self.alfa, self.paleta, self.partes = dist, rotulos, alfa, paleta, partes
+        self.fundo_irregular = fundo_irregular  # sugere "Remover fundo" (degradê, vinheta, borda mista)
 
     def cores(self):
         """Para a página: a cor real, a fração da logo e a cor de brilho sugerida de cada uma."""
@@ -179,28 +180,173 @@ def _borda(a):
     return np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
 
 
-def analisar(dados: bytes) -> Analise:
+# ---------- fundo que não é liso (degradê, vinheta, sombra, logo encostando na borda) ----------
+# "Remover fundo" troca a cor única da borda por uma SUPERFÍCIE suave (polinômio de grau 2 em
+# x e y, por canal Lab) ajustada aos pixels que com certeza são fundo: a borda, os pontos que a
+# pessoa tocou e, depois, o que está ligado à borda e cola no modelo (preenchimento a partir da
+# borda numa grade reduzida). Cada pixel é comparado com o fundo previsto NAQUELE ponto. Sombras
+# suaves (mais escuras que o fundo, com o mesmo tom) contam como fundo. Tudo roda numa grade de
+# no máximo GRADE_FUNDO células por lado: custo pequeno e previsível.
+GRADE_FUNDO = 128         # lado máximo da grade reduzida usada para ajustar o fundo
+MAX_PONTOS_FUNDO = 8      # pontos "isto é fundo" tocados pela pessoa
+RODADAS_FUNDO = 3         # reajustes da superfície
+MAX_PASSOS_PREENCHER = 300  # limite do preenchimento a partir da borda (na grade)
+TOL_FUNDO = 6.0           # ΔE até a superfície para uma célula contar como fundo certo
+SOMBRA_TOM = 7.0          # ΔE de tom (já descontado o escurecimento) aceito numa sombra
+SOMBRA_ESCURECE = 0.3     # sombra escurece até 30% sem virar símbolo
+
+
+def _grade(lab):
+    """Lab em blocos (média), com no máximo GRADE_FUNDO células por lado. Devolve (grade, s)."""
+    h, w = lab.shape[:2]
+    s = max(1, -(-max(h, w) // GRADE_FUNDO))
+    gh, gw = max(1, h // s), max(1, w // s)
+    g = lab[:gh * s, :gw * s].reshape(gh, s, gw, s, 3).mean((1, 3))
+    return g.astype(np.float32), s
+
+
+def _termos(x, y):
+    """Termos do polinômio (1, x, y, x², xy, y²), com x e y entre -1 e 1."""
+    return [np.ones_like(x * y), x + 0 * y, y + 0 * x, x * x + 0 * y, x * y, y * y + 0 * x]
+
+
+def _ajustar(xs, ys, cores, pesos):
+    """Mínimos quadrados ponderados (com uma leve regularização) dos 6 termos por canal."""
+    a = np.stack(_termos(xs, ys), 1).astype(np.float64) * pesos[:, None]
+    b = cores.astype(np.float64) * pesos[:, None]
+    reg = np.diag([0, 1, 1, 1, 1, 1]) * 1e-3 * float((pesos ** 2).sum())
+    return np.linalg.solve(a.T @ a + reg, a.T @ b)  # 6 x 3
+
+
+def _superficie(coef, xs, ys):
+    t = _termos(xs, ys)
+    return np.stack([sum(c * ti for c, ti in zip(coef[:, k], t)) for k in range(3)], -1).astype(np.float32)
+
+
+def _cor_mais_comum(cores):
+    """A cor que mais se repete (vizinhas com ΔE < 8), não a mediana: com a logo encostando
+    em parte da borda, a mediana mistura logo e fundo."""
+    if len(cores) > 400:
+        cores = cores[np.linspace(0, len(cores) - 1, 400).astype(int)]
+    perto = ((cores[:, None] - cores[None]) ** 2).sum(-1) < 64
+    i = int(perto.sum(1).argmax())
+    return cores[perto[i]].mean(0)
+
+
+def _cor_no_ponto(lab, u, v):
+    h, w = lab.shape[:2]
+    x, y = min(w - 1, int(u * w)), min(h - 1, int(v * h))
+    return lab[max(0, y - 2):y + 3, max(0, x - 2):x + 3].reshape(-1, 3).mean(0)
+
+
+def modelo_fundo(lab, pontos=()):
+    """Ajusta a superfície do fundo. Devolve (coef 6x3, irregular): `irregular` diz que um fundo
+    de cor única não serve (degradê, vinheta, ou a borda não tem uma cor dominante clara)."""
+    h, w = lab.shape[:2]
+    g, s = _grade(lab)
+    gh, gw = g.shape[:2]
+    gy = ((np.arange(gh) + 0.5) * s / h * 2 - 1).astype(np.float32)[:, None]
+    gx = ((np.arange(gw) + 0.5) * s / w * 2 - 1).astype(np.float32)[None, :]
+    borda = np.zeros((gh, gw), bool)
+    borda[0], borda[-1], borda[:, 0], borda[:, -1] = True, True, True, True
+    marcados = np.zeros((gh, gw), bool)
+    for u, v in pontos:
+        cy, cx = min(gh - 1, int(v * gh)), min(gw - 1, int(u * gw))
+        marcados[max(0, cy - 1):cy + 2, max(0, cx - 1):cx + 2] = True
+
+    comum = _cor_mais_comum(g[borda])
+    mediana = np.median(g[borda], 0)
+    amostra = (borda & (((g - comum) ** 2).sum(-1) < 144)) | marcados  # ΔE < 12 da cor dominante
+    if amostra.sum() < 8:
+        amostra = borda | marcados
+    for _ in range(RODADAS_FUNDO):
+        peso = np.where(marcados, 4.0, 1.0)[amostra]
+        yy, xx = np.broadcast_arrays(gy, gx)
+        coef = _ajustar(xx[amostra], yy[amostra], g[amostra], peso)
+        res = np.sqrt(((g - _superficie(coef, gx, gy)) ** 2).sum(-1))
+        # fundo certo: liga-se à borda (ou a um ponto marcado) por células que colam no modelo
+        cola = res < TOL_FUNDO
+        cheio = cola & (borda | marcados)
+        for _ in range(MAX_PASSOS_PREENCHER):
+            viz = cheio.copy()
+            viz[1:] |= cheio[:-1]; viz[:-1] |= cheio[1:]; viz[:, 1:] |= cheio[:, :-1]; viz[:, :-1] |= cheio[:, 1:]
+            viz &= cola
+            if (viz == cheio).all():
+                break
+            cheio = viz
+        if cheio.sum() < 8:
+            break
+        amostra = cheio | marcados
+    sup = _superficie(coef, gx, gy)
+    variacao = float(np.sqrt(((sup.reshape(-1, 3).max(0) - sup.reshape(-1, 3).min(0)) ** 2).sum()))
+    irregular = variacao > 10 or float(np.sqrt(((comum - mediana) ** 2).sum())) > 10
+    return coef, irregular
+
+
+def _distancia_superficie(lab, coef):
+    """Distância de cada pixel ao fundo previsto naquele ponto (escala do limiar), com as
+    sombras suaves descontadas."""
+    h, w = lab.shape[:2]
+    ys = ((np.arange(h) + 0.5) / h * 2 - 1).astype(np.float32)[:, None]
+    xs = ((np.arange(w) + 0.5) / w * 2 - 1).astype(np.float32)[None, :]
+    fundo = _superficie(coef, xs, ys)
+    dl = lab[..., 0] - fundo[..., 0]
+    de = np.sqrt(dl ** 2 + ((lab[..., 1:] - fundo[..., 1:]) ** 2).sum(-1))
+    lf = np.maximum(fundo[..., 0], 1.0)
+    k = np.clip(lab[..., 0] / lf, 0, 1)[..., None]
+    tom = np.sqrt(((lab[..., 1:] - k * fundo[..., 1:]) ** 2).sum(-1))  # cor, descontado o escurecimento
+    escurece = np.clip(-dl / lf, 0, 1)
+    sombra = (dl < 0) & (tom < SOMBRA_TOM)
+    d_sombra = np.maximum(tom, np.clip((escurece - SOMBRA_ESCURECE) / (1 - SOMBRA_ESCURECE), 0, 1) * 100)
+    return np.where(sombra, d_sombra, de) * ESCALA_DE
+
+
+def _pontos(pontos):
+    """Pontos (u, v) entre 0 e 1, no máximo MAX_PONTOS_FUNDO (o servidor já valida; aqui só
+    não confia)."""
+    ok = []
+    for p in tuple(pontos)[:MAX_PONTOS_FUNDO]:
+        u, v = float(p[0]), float(p[1])
+        if np.isfinite(u) and np.isfinite(v) and 0 <= u <= 1 and 0 <= v <= 1:
+            ok.append((u, v))
+    return tuple(ok)
+
+
+def analisar(dados: bytes, remover_fundo=False, pontos=()) -> Analise:
     """Separa símbolo e fundo pela COR (distância perceptual ΔE, em Lab, até a cor do fundo
     estimada pela borda) e acha as cores dominantes do símbolo.
 
     A distância é max(|Δ luminância|, ΔE × 2,55): um logo preto e branco dá o mesmo resultado
     de antes (ou pega um pouco mais de borda), e partes amarelas ou azul-claras sobre branco,
-    que têm luminância parecida com a do fundo, passam a contar."""
+    que têm luminância parecida com a do fundo, passam a contar.
+
+    `remover_fundo` compara cada pixel com uma superfície suave (veja modelo_fundo) em vez de
+    uma cor só; `pontos` [(u, v) de 0 a 1] são lugares que a pessoa disse que são fundo: a cor
+    deles também vira fundo. PNG transparente ignora os dois (o alfa já diz tudo)."""
+    pontos = _pontos(pontos)
     rgba = _rgba_reduzida(dados)
     rgb, alpha = rgba[..., :3], rgba[..., 3]
     lab = _lab(rgb)
     alfa = bool(_borda(alpha).mean() < 250)
+    irregular = False
     if alfa:  # PNG transparente: o que é opaco é o símbolo
         dist = alpha.astype(np.uint8)
         nucleo = alpha > 250
     else:
-        lum = rgb[..., 0] * 0.299 + rgb[..., 1] * 0.587 + rgb[..., 2] * 0.114
-        fundo_lab = np.median(_borda(lab), axis=0)
-        de = np.sqrt(((lab - fundo_lab) ** 2).sum(-1))
-        d = np.maximum(np.abs(lum - np.median(_borda(lum))), de * ESCALA_DE)
+        coef, irregular = modelo_fundo(lab, pontos)
+        if remover_fundo:
+            d = _distancia_superficie(lab, coef)
+        else:
+            lum = rgb[..., 0] * 0.299 + rgb[..., 1] * 0.587 + rgb[..., 2] * 0.114
+            fundo_lab = np.median(_borda(lab), axis=0)
+            de = np.sqrt(((lab - fundo_lab) ** 2).sum(-1))
+            d = np.maximum(np.abs(lum - np.median(_borda(lum))), de * ESCALA_DE)
+            del lum, de
+        for u, v in pontos:  # a cor de cada ponto tocado também é fundo
+            d = np.minimum(d, np.sqrt(((lab - _cor_no_ponto(lab, u, v)) ** 2).sum(-1)) * ESCALA_DE)
         dist = np.clip(d, 0, 255).astype(np.uint8)
         nucleo = d > LIMIAR_PADRAO
-        del lum, de, d
+        del d
     del rgba, rgb, alpha
 
     # as cores saem só do "miolo" de cada parte: sem o antialias das bordas, que mistura cores
@@ -228,7 +374,7 @@ def analisar(dados: bytes) -> Analise:
     n = np.bincount(rotulos[nucleo], minlength=len(centros)).astype(float)
     partes = list(n / n.sum()) if n.sum() else [1 / len(centros)] * len(centros)
     paleta = [tuple(int(v) for v in c) for c in _lab_para_rgb(centros)]
-    return Analise(dist, rotulos, alfa, paleta, partes)
+    return Analise(dist, rotulos, alfa, paleta, partes, irregular)
 
 
 def mascara(dados, limiar=LIMIAR_PADRAO, inverter=False, cores_off=()) -> np.ndarray:

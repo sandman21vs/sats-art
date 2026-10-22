@@ -73,6 +73,7 @@ MENSAGENS = {
     "A imagem expirou no servidor. Envie de novo.": (
         "The image expired on the server. Upload it again.", "Das Bild ist auf dem Server abgelaufen. Lade es erneut hoch."),
     "Ajuste de imagem inválido.": ("Invalid image setting.", "Ungültige Bildeinstellung."),
+    "Ajuste de fundo da imagem inválido.": ("Invalid image background setting.", "Ungültige Hintergrundeinstellung für das Bild."),
     "Símbolo desconhecido.": ("Unknown symbol.", "Unbekanntes Symbol."),
     "Só há forma detectada para imagens enviadas.": (
         "A detected shape only exists for uploaded images.", "Eine erkannte Form gibt es nur für hochgeladene Bilder."),

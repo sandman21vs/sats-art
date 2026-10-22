@@ -428,7 +428,8 @@ async def imagem(req: Request):
         raise Recusado(503, "Servidor ocupado. Tente de novo em alguns segundos.") from e
     finally:
         uploads_em_curso -= 1
-    return {"id": img_id, "cores": cores}
+    # fundo_irregular: degradê/vinheta detectado, a página já liga "Remover fundo"
+    return {"id": img_id, "cores": cores, "fundo_irregular": render.fundo_irregular(img_id)}
 
 
 @app.post("/api/forma")
@@ -444,7 +445,10 @@ async def forma(req: Request):
         raise Recusado(429, EXCESSO) from e
     except Ocupado as e:
         raise Recusado(503, "Servidor ocupado. Tente de novo em alguns segundos.") from e
-    return Response(png, media_type="image/png")
+    # cores desta análise (mudam com "Remover fundo" e os pontos de fundo): a página atualiza os chips
+    cores = render.cores_de(p)
+    extra = {"X-Cores": json.dumps(cores, separators=(",", ":"))} if cores is not None else {}
+    return Response(png, media_type="image/png", headers=extra)
 
 
 @app.post("/api/preview")
