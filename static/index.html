@@ -268,6 +268,20 @@
   .regiao:hover { border-color: #4a423f; }
   .regiao:focus-within { outline: 2px solid #ff660080; outline-offset: 1px; }
 
+  /* imagem: remover fundo, tocar no fundo e recortar (passo 1, depois de enviar) */
+  .ferramentas-img { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .ferramentas-img button { flex: 1 1 auto; font-size: 12.5px; padding: 7px 10px; border-radius: 20px; white-space: nowrap; }
+  .n-pontos { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 2px; border-radius: 9px;
+    background: var(--accent); color: #1a0d04; font-size: 11px; font-weight: 800; }
+  .editor-img { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #0f0d0d; }
+  .editor-img canvas { display: block; margin: 0 auto; max-width: 100%; border-radius: 6px; touch-action: none; cursor: crosshair;
+    background: repeating-conic-gradient(#222 0% 25%, #2c2c2c 0% 50%) 50% / 16px 16px; }
+  .editor-img.recorte canvas { cursor: move; }
+  .editor-img .hint { text-align: center; margin: 6px 0 8px; }
+  .editor-img .inline button { font-size: 13px; padding: 8px; }
+  .editor-img .inline button.ok { background: var(--accent); border-color: var(--accent); color: #1a0d04; font-weight: 700; }
+  @media (max-width: 760px) { .editor-img { scroll-margin-top: calc(46vh + 40px); } }  /* não some sob a prévia fixa */
+
   /* reportar problema */
   #reportTipos { margin: 12px 0 10px; }
   #reportTipos button { font-size: 12.5px; padding: 8px 6px; }
@@ -346,6 +360,21 @@
       <div class="ajuda-logo"><span data-i18n="p1.ajuda">Logo colorida ou preto e branco, de preferência em fundo liso</span><button class="link" data-tutorial-logo="0" data-i18n="p1.como_logo">Como usar sua logo?</button></div>
       <div id="imgopts" hidden>
         <div class="shape"><img id="shape" alt="forma detectada" data-i18n-alt="p1.forma_alt"><div><span data-i18n="p1.forma_a">Assim entendemos sua imagem. Se veio errado, ajuste abaixo ou</span> <button class="link" data-tutorial-logo="3" data-i18n="p1.forma_b">veja que imagens funcionam melhor</button>.</div></div>
+        <div class="ferramentas-img">
+          <button type="button" id="limparFundo" aria-pressed="false" title="Para fundo em degradê, com sombra ou vinheta" data-i18n-title="p1.remover_fundo_title" data-i18n="p1.remover_fundo">🧹 Remover fundo</button>
+          <button type="button" id="tocarFundo" aria-pressed="false" title="Toque na imagem onde é fundo" data-i18n-title="p1.tocar_fundo_title"><span data-i18n="p1.tocar_fundo">🎯 Tocar no fundo</span><span class="n-pontos" id="nPontos" hidden></span></button>
+          <button type="button" id="recortar" aria-pressed="false" title="Deixe só a logo, sem o resto do print" data-i18n-title="p1.recortar_title" data-i18n="p1.recortar">✂️ Recortar</button>
+        </div>
+        <div class="hint" id="dicaFundo" hidden></div>
+        <div class="editor-img" id="editorImg" hidden>
+          <canvas id="editorCanvas"></canvas>
+          <div class="hint" id="editorDica"></div>
+          <div class="inline">
+            <button type="button" id="editorLimpar" data-i18n="p1.limpar_pontos">Limpar pontos</button>
+            <button type="button" id="editorCancelar" data-i18n="p1.cancelar">Cancelar</button>
+            <button type="button" class="ok" id="editorOk" data-i18n="p1.pronto">Pronto</button>
+          </div>
+        </div>
         <div class="cores-logo" id="coresLogo" hidden>
           <div class="sub" data-i18n="p1.cores_titulo">Cores encontradas</div>
           <div class="chips-logo" id="chipsLogo"></div>
@@ -546,13 +575,14 @@
           <figcaption data-i18n-html="l3.ex3"><b>✓ Branco no preto</b>também vale</figcaption></figure>
         <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="url(#multicor)"/></svg>
           <figcaption data-i18n-html="l3.ex4"><b>✓ Colorida</b>em fundo liso</figcaption></figure>
-        <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#degrade)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#333"/></svg>
-          <figcaption data-i18n-html="l3.ex5"><b>✗ Foto ou degradê</b>o fundo vira forma</figcaption></figure>
+        <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#degrade)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#333"/></svg>
+          <figcaption data-i18n-html="l3.ex5"><b>✓ Degradê</b>com Remover fundo</figcaption></figure>
         <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#eee"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#cfcfcf"/></svg>
           <figcaption data-i18n-html="l3.ex6"><b>✗ Tom parecido</b>com o fundo</figcaption></figure>
       </div>
       <p data-i18n-html="l3.p2">💡 <b>Logo colorida?</b> Depois de enviar, aparecem as <b>cores encontradas</b>: toque numa cor para tirá-la do símbolo (um texto, uma moldura). No passo 2, <b>Cores da logo</b> faz a arte brilhar nas cores dela. Evite texto miúdo e linhas muito finas.</p>
-      <div class="aviso-logo" data-i18n="l3.aviso">Ainda funciona melhor com fundo liso, de uma cor só. Foto, degradê, sombra e cor muito parecida com a do fundo confundem a separação: nesses casos, use a versão em preto e branco da logo.</div>
+      <p data-i18n-html="l3.p3">🛠️ <b>Fundo difícil?</b> <b>Remover fundo</b> tira degradê, vinheta e sombra suave (liga sozinho quando percebe um degradê). Sobrou um pedaço? <b>Tocar no fundo</b>: toque nele e essa cor sai. Mandou um print? <b>Recortar</b> deixa só a logo.</p>
+      <div class="aviso-logo" data-i18n="l3.aviso">Ainda não dá conta de foto (fundo cheio de detalhes) nem de cor quase igual à do fundo: nesses casos, use a versão em preto e branco da logo ou um PNG sem fundo.</div>
     </div>
 
     <div class="pontos" id="pontosLogo"></div>

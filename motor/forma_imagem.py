@@ -194,6 +194,8 @@ MAX_PASSOS_PREENCHER = 300  # limite do preenchimento a partir da borda (na grad
 TOL_FUNDO = 6.0           # ΔE até a superfície para uma célula contar como fundo certo
 SOMBRA_TOM = 7.0          # ΔE de tom (já descontado o escurecimento) aceito numa sombra
 SOMBRA_ESCURECE = 0.3     # sombra escurece até 30% sem virar símbolo
+MIN_BORDA_PONTO = 0.05    # fração da borda com a cor de um ponto para recomeçar o ajuste por ela
+MIN_SIMBOLO = 0.005       # fundo que cobre tudo menos isso não é fundo (era a logo)
 
 
 def _grade(lab):
@@ -239,33 +241,17 @@ def _cor_no_ponto(lab, u, v):
     return lab[max(0, y - 2):y + 3, max(0, x - 2):x + 3].reshape(-1, 3).mean(0)
 
 
-def modelo_fundo(lab, pontos=()):
-    """Ajusta a superfície do fundo. Devolve (coef 6x3, irregular): `irregular` diz que um fundo
-    de cor única não serve (degradê, vinheta, ou a borda não tem uma cor dominante clara)."""
-    h, w = lab.shape[:2]
-    g, s = _grade(lab)
-    gh, gw = g.shape[:2]
-    gy = ((np.arange(gh) + 0.5) * s / h * 2 - 1).astype(np.float32)[:, None]
-    gx = ((np.arange(gw) + 0.5) * s / w * 2 - 1).astype(np.float32)[None, :]
-    borda = np.zeros((gh, gw), bool)
-    borda[0], borda[-1], borda[:, 0], borda[:, -1] = True, True, True, True
-    marcados = np.zeros((gh, gw), bool)
-    for u, v in pontos:
-        cy, cx = min(gh - 1, int(v * gh)), min(gw - 1, int(u * gw))
-        marcados[max(0, cy - 1):cy + 2, max(0, cx - 1):cx + 2] = True
-
-    comum = _cor_mais_comum(g[borda])
-    mediana = np.median(g[borda], 0)
-    amostra = (borda & (((g - comum) ** 2).sum(-1) < 144)) | marcados  # ΔE < 12 da cor dominante
+def _refinar(g, gx, gy, borda, marcados, base):
+    """Ajusta a superfície a partir da borda parecida com `base` (e das células marcadas) e
+    refaz com o que está ligado a elas e cola no modelo (preenchimento a partir da borda)."""
+    amostra = (borda & (((g - base) ** 2).sum(-1) < 144)) | marcados  # ΔE < 12 da cor de base
     if amostra.sum() < 8:
         amostra = borda | marcados
+    yy, xx = np.broadcast_arrays(gy, gx)
     for _ in range(RODADAS_FUNDO):
         peso = np.where(marcados, 4.0, 1.0)[amostra]
-        yy, xx = np.broadcast_arrays(gy, gx)
         coef = _ajustar(xx[amostra], yy[amostra], g[amostra], peso)
-        res = np.sqrt(((g - _superficie(coef, gx, gy)) ** 2).sum(-1))
-        # fundo certo: liga-se à borda (ou a um ponto marcado) por células que colam no modelo
-        cola = res < TOL_FUNDO
+        cola = np.sqrt(((g - _superficie(coef, gx, gy)) ** 2).sum(-1)) < TOL_FUNDO
         cheio = cola & (borda | marcados)
         for _ in range(MAX_PASSOS_PREENCHER):
             viz = cheio.copy()
@@ -277,10 +263,54 @@ def modelo_fundo(lab, pontos=()):
         if cheio.sum() < 8:
             break
         amostra = cheio | marcados
+    return coef
+
+
+def modelo_fundo(lab, pontos=()):
+    """Ajusta a superfície do fundo. Devolve (coef 6x3, irregular, cor_da_borda): `irregular` diz
+    que um fundo de cor única não serve (degradê, vinheta, ou a borda não tem uma cor dominante
+    clara); `cor_da_borda` (Lab) só vem quando o ajuste trocou a cor dominante da borda pela de
+    um ponto tocado (veja abaixo), para analisar() decidir se ela também é fundo.
+
+    Pontos tocados: os que combinam com o fundo previsto entram no ajuste (com mais peso). Se
+    nenhum combina, mas a cor de um deles aparece em boa parte da borda, a borda estava mais
+    ocupada pela logo do que pelo fundo: o ajuste recomeça a partir dessa cor. Um ponto de cor
+    isolada (um pedaço da interface, um miolo) fica fora do ajuste: a cor dele vira fundo à parte."""
+    h, w = lab.shape[:2]
+    g, s = _grade(lab)
+    gh, gw = g.shape[:2]
+    gy = ((np.arange(gh) + 0.5) * s / h * 2 - 1).astype(np.float32)[:, None]
+    gx = ((np.arange(gw) + 0.5) * s / w * 2 - 1).astype(np.float32)[None, :]
+    borda = np.zeros((gh, gw), bool)
+    borda[0], borda[-1], borda[:, 0], borda[:, -1] = True, True, True, True
+    comum = _cor_mais_comum(g[borda])
+    mediana = np.median(g[borda], 0)
+    nenhum = np.zeros((gh, gw), bool)
+    coef = _refinar(g, gx, gy, borda, nenhum, comum)
     sup = _superficie(coef, gx, gy)
     variacao = float(np.sqrt(((sup.reshape(-1, 3).max(0) - sup.reshape(-1, 3).min(0)) ** 2).sum()))
     irregular = variacao > 10 or float(np.sqrt(((comum - mediana) ** 2).sum())) > 10
-    return coef, irregular
+    if pontos:
+        celulas = []
+        for u, v in pontos:
+            cy, cx = min(gh - 1, int(v * gh)), min(gw - 1, int(u * gw))
+            m = nenhum.copy()
+            m[max(0, cy - 1):cy + 2, max(0, cx - 1):cx + 2] = True
+            m &= ((g - g[cy, cx]) ** 2).sum(-1) < 64  # só as vizinhas da mesma cor (toque perto da borda da logo)
+            celulas.append((m, g[cy, cx]))
+        res = np.sqrt(((g - sup) ** 2).sum(-1))
+        combinam = [m for m, _ in celulas if float(res[m].max()) < 12]
+        if combinam:
+            coef = _refinar(g, gx, gy, borda, np.logical_or.reduce(combinam), comum)
+        else:
+            # só conta a borda que o ajuste atual NÃO explica (num degradê que vai até o branco,
+            # tocar num miolo branco não é sinal de que a borda estava errada)
+            sobra = borda & (res >= TOL_FUNDO)
+            presenca = [int((sobra & (((g - c) ** 2).sum(-1) < 144)).sum()) for _, c in celulas]
+            i = int(np.argmax(presenca))
+            if presenca[i] >= MIN_BORDA_PONTO * borda.sum():
+                return _refinar(g, gx, gy, borda, celulas[i][0], celulas[i][1]), irregular, comum
+    return coef, irregular, None
 
 
 def _distancia_superficie(lab, coef):
@@ -333,17 +363,31 @@ def analisar(dados: bytes, remover_fundo=False, pontos=()) -> Analise:
         dist = alpha.astype(np.uint8)
         nucleo = alpha > 250
     else:
-        coef, irregular = modelo_fundo(lab, pontos)
+        coef, irregular, cor_borda = modelo_fundo(lab, pontos)
         if remover_fundo:
             d = _distancia_superficie(lab, coef)
+            if cor_borda is not None:  # o ajuste seguiu um ponto; a cor da borda é fundo também?
+                d_borda = np.sqrt(((lab - cor_borda) ** 2).sum(-1)) * ESCALA_DE
+                d = np.minimum(d, d_borda)
         else:
             lum = rgb[..., 0] * 0.299 + rgb[..., 1] * 0.587 + rgb[..., 2] * 0.114
             fundo_lab = np.median(_borda(lab), axis=0)
             de = np.sqrt(((lab - fundo_lab) ** 2).sum(-1))
             d = np.maximum(np.abs(lum - np.median(_borda(lum))), de * ESCALA_DE)
             del lum, de
-        for u, v in pontos:  # a cor de cada ponto tocado também é fundo
-            d = np.minimum(d, np.sqrt(((lab - _cor_no_ponto(lab, u, v)) ** 2).sum(-1)) * ESCALA_DE)
+        if pontos:  # a cor de cada ponto tocado também é fundo
+            d_pontos = np.full(d.shape, np.inf, np.float32)
+            for u, v in pontos:
+                d_pontos = np.minimum(d_pontos, np.sqrt(((lab - _cor_no_ponto(lab, u, v)) ** 2).sum(-1)) * ESCALA_DE)
+            com_borda = np.minimum(d, d_pontos)
+            # se borda + pontos apagam quase tudo, a borda era a logo: vale o que a pessoa tocou
+            if (com_borda > LIMIAR_PADRAO).mean() >= MIN_SIMBOLO:
+                d = com_borda
+            elif remover_fundo:
+                d = np.minimum(_distancia_superficie(lab, coef), d_pontos)
+            else:
+                d = d_pontos
+            del d_pontos, com_borda
         dist = np.clip(d, 0, 255).astype(np.uint8)
         nucleo = d > LIMIAR_PADRAO
         del d

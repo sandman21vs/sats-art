@@ -91,8 +91,41 @@ def test_logo_encostando_na_maior_parte_da_borda_com_ponto_de_fundo():
     dados = fi.reduzir(_png(_sobre(Image.new("RGB", (W, H), (250, 250, 250)), m, (10, 10, 10))))
     gt = _gt(m, dados)
     assert _iou(fi.mascara(fi.analisar(dados)), gt) < 0.1          # a borda é quase toda logo
-    a = fi.analisar(dados, remover_fundo=True, pontos=[(0.5, 0.1)])  # um toque no fundo resolve
-    assert _iou(fi.mascara(a), gt) > 0.9
+    for limpar in (False, True):                                    # um toque no fundo resolve
+        assert _iou(fi.mascara(fi.analisar(dados, limpar, [(0.5, 0.1)])), gt) > 0.9
+
+
+def test_ponto_numa_cor_isolada_nao_entorta_o_degrade():
+    """Tocar no miolo branco de uma logo sobre degradê: o miolo vira furo e o degradê continua fundo."""
+    m = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(m).ellipse((250, 150, 550, 450), fill=255)
+    im = _sobre(_degrade((40, 80, 200), (240, 240, 255)), m, (20, 20, 20))
+    ImageDraw.Draw(im).rectangle((360, 260, 440, 340), fill="white")
+    dados = fi.reduzir(_png(im))
+    furo = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(furo).rectangle((360, 260, 440, 340), fill=255)
+    gt = _gt(m, dados) & ~_gt(furo, dados)
+    a = fi.analisar(dados, remover_fundo=True, pontos=[(0.5, 0.5)])
+    assert _iou(fi.mascara(a), gt) > 0.97 and len(a.paleta) == 1
+
+
+def test_ponto_encostado_na_logo_nao_estraga_o_ajuste():
+    """Toque no degradê quase em cima da borda da logo: o miolo branco (parte da logo) fica."""
+    m = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(m).ellipse((250, 150, 550, 450), fill=255)
+    im = _sobre(_degrade((40, 80, 200), (240, 240, 255)), m, (20, 20, 20))
+    ImageDraw.Draw(im).rectangle((360, 260, 440, 340), fill="white")
+    dados = fi.reduzir(_png(im))
+    a = fi.analisar(dados, remover_fundo=True, pontos=[(0.439, 0.248)])
+    assert a.dist[300, 400] > 100 and a.dist[50, 400] < 20 and len(a.paleta) == 2
+
+
+def test_remover_fundo_com_ponto_numa_barra_da_interface():
+    m = _forma()
+    im = _sobre(Image.new("RGB", (W, H), "white"), m, (0, 0, 0))
+    ImageDraw.Draw(im).rectangle((0, 0, W, 60), fill=(90, 110, 140))
+    dados = fi.reduzir(_png(im))
+    assert _iou(fi.mascara(fi.analisar(dados, remover_fundo=True, pontos=[(0.5, 0.05)])), _gt(m, dados)) > 0.97
 
 
 def test_logo_encostando_em_um_lado_continua_certa():
