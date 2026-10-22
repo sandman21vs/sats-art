@@ -21,7 +21,8 @@ const dimensoes = (lado) => (estado.retrato ? [lado * 9 / 16, lado] : [lado, lad
 const rotulo = (lado, nome) => `${nome} · ${dimensoes(lado).join("×")}`;
 const ANGULO_PADRAO = { sat: -21, imagem: 0 };
 const PADRAO = { fonte: "sat", retrato: false, angulo: -21, seed: 21, circulo: true, tamanho: 1, raio: 300, zoom: 2.7,
-  malha: 14, poeira_longe: 0.22, halo: 110, cor: "#ff6600", brilho: 1, fundo: 1, limiar: 60, inverter: false };
+  malha: 14, poeira_longe: 0.22, halo: 110, cor: "#ff6600", brilho: 1, fundo: 1, limiar: 60, inverter: false,
+  cores_off: [], multicor: false, cores_arte: [] };
 
 const guardado = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) ?? padrao; } catch (e) { return padrao; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -35,6 +36,9 @@ if (!(estado.fonte in ANGULO_PADRAO) || estado.fonte === "imagem") {  // a image
   Object.assign(estado, { fonte: "sat", angulo: ANGULO_PADRAO.sat });
 }
 delete estado.imagem_id;
+// as cores da logo valem só para a imagem enviada nesta sessão (estados antigos não têm estes campos)
+Object.assign(estado, { cores_off: [], cores_arte: [], multicor: estado.multicor === true });
+let paletaLogo = [];  // [{ hex, parte, arte }] da imagem enviada, na ordem do servidor
 let INFO = { recompensas: false, max_export: 3840, recompensas_seq: [], limite_dia: 0 };
 let DIA = null;  // { feitos, ganho_hoje, restante_hoje, proxima }
 
@@ -73,7 +77,7 @@ for (const [box, list] of Object.entries(SLIDERS)) {
 for (const c of CORES) {
   const b = document.createElement("button");
   b.style.background = c; b.dataset.cor = c; b.title = c; b.setAttribute("aria-label", "Cor " + c);
-  b.addEventListener("click", () => { estado.cor = c; sincronizar(); mudou(); });
+  b.addEventListener("click", () => { estado.cor = c; estado.multicor = false; sincronizar(); mudou(); });
   $("cores").insertBefore(b, $("cores").querySelector(".outra"));
 }
 
@@ -84,7 +88,7 @@ function sincronizar() {
   $("seed").value = estado.seed;
   $("circulo").checked = estado.circulo;
   $("cor").value = estado.cor;
-  document.querySelectorAll("[data-cor]").forEach((b) => b.classList.toggle("on", b.dataset.cor === estado.cor));
+  document.querySelectorAll("[data-cor]").forEach((b) => b.classList.toggle("on", !usaCoresLogo() && b.dataset.cor === estado.cor));
   $("limiar").value = estado.limiar; $("v-limiar").textContent = estado.limiar;
   $("inverter").checked = estado.inverter;
   document.querySelectorAll("[data-fonte]").forEach((b) => b.classList.toggle("on", b.dataset.fonte === estado.fonte));
@@ -92,6 +96,7 @@ function sincronizar() {
   document.querySelectorAll("[data-formato]").forEach((b) => b.classList.toggle("on", (b.dataset.formato === "retrato") === estado.retrato));
   document.body.classList.toggle("retrato", estado.retrato);
   for (const o of $("largura").options) o.textContent = rotulo(Number(o.value), RESOLUCOES.find(([w]) => w === Number(o.value))[1]);
+  sincronizarCoresLogo();
 }
 
 function salvar() { const { imagem_id, ...resto } = estado; guardar("rede-nos", resto); }
@@ -143,14 +148,19 @@ async function carregarImagem(blob) {
   $("dropTxt").textContent = "Trocar imagem: arraste, cole ou clique";
   estado.imagem_id = j.id;
   estado.fonte = "imagem"; estado.angulo = 0;
+  novaPaleta(j.cores);
   document.querySelector('[data-fonte="imagem"]').disabled = false;
   sincronizar(); atualizarForma(); mudou();
 }
 
+let pedidoForma = 0;  // só a resposta do último pedido vale (cliques rápidos nas cores chegam fora de ordem)
 async function atualizarForma() {
   if (estado.fonte !== "imagem") return;
+  const n = ++pedidoForma;
   const r = await postJSON("/api/forma", estado);
-  if (r.ok) $("shape").src = URL.createObjectURL(await r.blob());
+  const png = r.ok ? await r.blob() : null;
+  if (n !== pedidoForma) return;
+  if (r.ok) $("shape").src = URL.createObjectURL(png);
   else erroNoStatus((await r.json()).erro);
 }
 
@@ -175,12 +185,101 @@ document.querySelectorAll("[data-formato]").forEach((b) => b.addEventListener("c
 $("circulo").addEventListener("change", (e) => { estado.circulo = e.target.checked; mudou(); });
 $("seed").addEventListener("change", (e) => { estado.seed = parseInt(e.target.value) || 0; mudou(); });
 $("sortear").addEventListener("click", () => { estado.seed = Math.floor(Math.random() * 100000); $("seed").value = estado.seed; mudou(); });
-$("cor").addEventListener("input", (e) => { estado.cor = e.target.value; sincronizar(); mudou(); });
+$("cor").addEventListener("input", (e) => { estado.cor = e.target.value; estado.multicor = false; sincronizar(); mudou(); });
 $("reset").addEventListener("click", () => {
-  const { fonte, imagem_id, limiar, inverter, retrato } = estado;  // o formato escolhido fica
-  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, angulo: ANGULO_PADRAO[fonte] };
+  const { fonte, imagem_id, limiar, inverter, retrato, cores_off } = estado;  // o formato escolhido fica
+  estado = { ...PADRAO, fonte, imagem_id, limiar, inverter, retrato, cores_off, angulo: ANGULO_PADRAO[fonte],
+    cores_arte: paletaLogo.map((c) => c.arte) };
   sincronizar(); mudou();
 });
+
+// ---------- cores da logo ----------
+// Passo 1: cada cor dominante da imagem vira um chip; desligar tira aquela parte do símbolo.
+// Passo 2: "Cores da logo" faz cada parte acender os nós em volta com a sua cor (trocável).
+// Os controles só aparecem quando a imagem tem mais de uma cor relevante.
+const temCoresLogo = () => estado.fonte === "imagem" && paletaLogo.length > 1;
+const usaCoresLogo = () => temCoresLogo() && estado.multicor;
+// cor de brilho da parte i: a escolhida, a sugerida pelo servidor ou (cores neutras) a cor principal
+const corDaParte = (i) => estado.cores_arte[i] || estado.cor;
+
+function novaPaleta(cores) {
+  paletaLogo = Array.isArray(cores) ? cores.slice(0, 6) : [];
+  estado.cores_off = [];
+  estado.cores_arte = paletaLogo.map((c) => c.arte);
+  if (paletaLogo.length < 2) estado.multicor = false;
+  desenharCoresLogo();
+}
+
+function desenharCoresLogo() {
+  const chips = $("chipsLogo"), regioes = $("regioesArte"), mini = $("miniPaleta");
+  chips.innerHTML = ""; regioes.innerHTML = ""; mini.innerHTML = "";
+  paletaLogo.forEach((c, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip-cor"; b.dataset.parte = i;
+    const bola = document.createElement("i");
+    bola.style.background = c.hex;
+    b.append(bola, `${Math.max(1, Math.round(c.parte * 100))}%`);
+    b.addEventListener("click", () => alternarCorLogo(i));
+    chips.append(b);
+
+    const r = document.createElement("label");
+    r.className = "regiao"; r.dataset.parte = i; r.title = "Cor do brilho perto desta parte da logo";
+    const orig = document.createElement("i"), seta = document.createElement("span"), brilho = document.createElement("span");
+    orig.className = "orig"; orig.style.background = c.hex;
+    seta.className = "seta"; seta.textContent = "→";
+    brilho.className = "brilho";
+    const inp = Object.assign(document.createElement("input"), { type: "color" });
+    inp.setAttribute("aria-label", `Cor do brilho perto da parte ${c.hex} da logo`);
+    inp.addEventListener("input", () => { estado.cores_arte[i] = inp.value; sincronizarCoresLogo(); mudou(); });
+    brilho.append(inp);
+    r.append(orig, seta, brilho);
+    regioes.append(r);
+
+    const m = document.createElement("i");
+    m.style.background = c.arte || c.hex;
+    mini.append(m);
+  });
+  sincronizarCoresLogo();
+}
+
+function sincronizarCoresLogo() {
+  const tem = temCoresLogo(), usa = usaCoresLogo();
+  $("coresLogo").hidden = !tem;
+  $("corLogo").hidden = !tem;
+  $("corLogo").classList.toggle("on", usa);
+  $("corLogo").setAttribute("aria-pressed", String(usa));
+  $("coresArte").hidden = !usa;
+  $("chipsLogo").querySelectorAll(".chip-cor").forEach((b) => {
+    const i = Number(b.dataset.parte), ligada = !estado.cores_off.includes(i);
+    b.classList.toggle("on", ligada);
+    b.setAttribute("aria-pressed", String(ligada));
+    b.setAttribute("aria-label", `Cor ${paletaLogo[i].hex}: ${ligada ? "no símbolo" : "fora do símbolo"}`);
+  });
+  $("regioesArte").querySelectorAll(".regiao").forEach((r) => {
+    const i = Number(r.dataset.parte), cor = corDaParte(i);
+    r.hidden = estado.cores_off.includes(i);
+    const brilho = r.querySelector(".brilho");
+    brilho.style.background = cor; brilho.style.color = cor;
+    r.querySelector("input").value = cor;
+  });
+}
+
+let timerDicaCores;
+function alternarCorLogo(i) {
+  const off = new Set(estado.cores_off);
+  if (off.has(i)) off.delete(i);
+  else if (off.size >= paletaLogo.length - 1) {  // sem nenhuma cor não sobra símbolo
+    const dica = $("dicaCoresLogo");
+    clearTimeout(timerDicaCores);
+    dica.textContent = "Pelo menos uma cor precisa ficar no símbolo.";
+    timerDicaCores = setTimeout(() => { dica.textContent = "Toque numa cor para tirar essa parte do símbolo."; }, 2500);
+    return;
+  } else off.add(i);
+  estado.cores_off = [...off].sort((a, b) => a - b);
+  sincronizarCoresLogo(); atualizarForma(); mudou();
+}
+
+$("corLogo").addEventListener("click", () => { estado.multicor = !estado.multicor; sincronizar(); mudou(); });
 
 // ---------- ganhe sats ----------
 async function carregarInfo() {

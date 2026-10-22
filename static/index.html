@@ -229,6 +229,37 @@
   .exemplos .ruim b { color: #ff8a7a; }
   .aviso-logo { font-size: 12.5px; color: #ffd2ad; background: #2a1708; border: 1px solid #6a3510; border-radius: 10px; padding: 9px 11px; margin-top: 8px; }
 
+  /* cores da logo: chips no passo 1 (entra ou não no símbolo) e cor de cada parte no passo 2 */
+  .cores-logo { margin-top: 10px; }
+  .cores-logo .sub { margin-top: 0; }
+  .chips-logo { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip-cor { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 20px;
+    font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text); }
+  .chip-cor i { position: relative; width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px #ffffff40; flex: none; }
+  .chip-cor.on { border-color: #5a504c; background: #24201f; color: var(--text); }
+  .chip-cor.on i::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 800;
+    color: #fff; text-shadow: 0 0 2px #000, 0 0 3px #000; }
+  .chip-cor:not(.on) { color: var(--muted); text-decoration: line-through; }
+  .chip-cor:not(.on) i { opacity: .35; }
+  .chip-cor:not(.on) i::after { content: ""; position: absolute; left: -2px; right: -2px; top: 50%; height: 2px; background: #ff8a7a;
+    transform: rotate(-45deg); }
+  .cores .cor-logo { width: auto; height: 28px; border-radius: 20px; padding: 0 10px 0 6px; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12.5px; border: 1px solid var(--line); background: #1f1c1b; }
+  .cores .cor-logo.on { border-color: #fff; background: #2a2523; }
+  .mini-paleta { display: inline-flex; }
+  .mini-paleta i { width: 14px; height: 14px; border-radius: 50%; margin-left: -5px; box-shadow: 0 0 0 1.5px #1f1c1b; }
+  .mini-paleta i:first-child { margin-left: 0; }
+  .cores-arte { margin-top: 8px; }
+  .regioes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .regiao { display: inline-flex; align-items: center; gap: 5px; padding: 4px; border: 1px solid var(--line); border-radius: 20px;
+    background: #1f1c1b; cursor: pointer; }
+  .regiao .orig { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px #ffffff40; }
+  .regiao .seta { color: var(--muted); font-size: 11px; }
+  .regiao .brilho { position: relative; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .regiao .brilho input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .regiao:hover { border-color: #4a423f; }
+  .regiao:focus-within { outline: 2px solid #ff660080; outline-offset: 1px; }
+
   /* reportar problema */
   #reportTipos { margin: 12px 0 10px; }
   #reportTipos button { font-size: 12.5px; padding: 8px 6px; }
@@ -299,9 +330,14 @@
         <div id="dropTxt">Use qualquer logo: <b>arraste</b>, <b>cole um print</b> (Ctrl/⌘+V) ou <b>clique</b> para escolher</div>
       </div>
       <input type="file" id="file" accept="image/*" hidden>
-      <div class="ajuda-logo"><span>Funciona melhor com logo preto e branco</span><button class="link" data-tutorial-logo="0">Como usar sua logo?</button></div>
+      <div class="ajuda-logo"><span>Logo colorida ou preto e branco, de preferência em fundo liso</span><button class="link" data-tutorial-logo="0">Como usar sua logo?</button></div>
       <div id="imgopts" hidden>
         <div class="shape"><img id="shape" alt="forma detectada"><div>Assim entendemos sua imagem. Se veio errado, ajuste abaixo ou <button class="link" data-tutorial-logo="3">veja que imagens funcionam melhor</button>.</div></div>
+        <div class="cores-logo" id="coresLogo" hidden>
+          <div class="sub">Cores encontradas</div>
+          <div class="chips-logo" id="chipsLogo"></div>
+          <div class="hint" id="dicaCoresLogo">Toque numa cor para tirar essa parte do símbolo.</div>
+        </div>
         <div class="row"><label>Sensibilidade <span id="v-limiar"></span></label>
           <input type="range" id="limiar" min="5" max="200" step="1"></div>
         <label class="check"><input type="checkbox" id="inverter"> Inverter (símbolo escuro ↔ claro)</label>
@@ -319,6 +355,11 @@
       <div class="row"><label>Cor</label>
         <div class="cores" id="cores">
           <label class="outra" title="Escolher outra cor">🎨<input type="color" id="cor"></label>
+          <button class="cor-logo" id="corLogo" hidden title="Cada parte da logo acende a rede com a sua cor"><span class="mini-paleta" id="miniPaleta"></span>Cores da logo</button>
+        </div>
+        <div class="cores-arte" id="coresArte" hidden>
+          <div class="regioes" id="regioesArte"></div>
+          <div class="hint">Os nós perto de cada parte da logo brilham na cor dela. Toque numa cor para trocar.</div>
         </div>
       </div>
       <div id="sliders-basico"></div>
@@ -381,7 +422,7 @@
     </svg>
     <h3 id="tutTitulo">Crie arte e ganhe sats ⚡</h3>
     <ol class="etapas">
-      <li><div class="ico">🎨</div><div><b>Escolha um símbolo</b><span>Use o exemplo ou cole o print de qualquer logo, de preferência em preto e branco.</span></div></li>
+      <li><div class="ico">🎨</div><div><b>Escolha um símbolo</b><span>Use o exemplo ou cole o print de qualquer logo, colorida ou não, de preferência em fundo liso.</span></div></li>
       <li><div class="ico">✨</div><div><b>Deixe do seu jeito</b><span>Troque a cor, o tamanho e sorteie variações. A prévia muda na hora.</span></div></li>
       <li id="tutGanhe"><div class="ico">⚡</div><div><b>Baixe e ganhe sats</b><span id="tutGanheTxt">Coloque seu endereço Lightning e receba na hora.</span></div></li>
       <li><div class="ico">📣</div><div><b>Compartilhe</b><span>Mostre sua arte e desafie os amigos: criar e ganhar sats, ou tentar roubar o pote.</span></div></li>
@@ -451,6 +492,7 @@
       </svg>
       <p><b>2. Confira a forma detectada.</b> O símbolo tem que aparecer <b>branco</b> no fundo escuro.</p>
       <p>Saiu ao contrário? Marque <b>Inverter</b>. Faltou pedaço ou entrou sujeira? Mexa na <b>Sensibilidade</b>.</p>
+      <p>Logo colorida? Abaixo aparecem as <b>cores encontradas</b>: toque numa cor para tirar essa parte do símbolo.</p>
     </div>
 
     <div class="tela" data-tela="2" hidden>
@@ -477,10 +519,11 @@
       </svg>
       <p><b>3. Deixe do seu jeito.</b> A logo vira o vazio no meio da rede de nós.</p>
       <p>Troque a cor, mude o tamanho e aperte <b>🎲 Nova variação</b> até gostar. A prévia muda na hora.</p>
+      <p>Com logo colorida, escolha <b>Cores da logo</b>: cada parte acende a rede em volta com a sua cor.</p>
     </div>
 
     <div class="tela" data-tela="3" hidden>
-      <p style="margin-top:0"><b>Que imagem funciona melhor?</b> O app separa a logo do fundo pelo <b>claro e escuro</b>, não pelas cores. Quanto mais contraste, melhor.</p>
+      <p style="margin-top:0"><b>Que imagem funciona melhor?</b> O app separa a logo do fundo pela <b>cor</b>: tudo que for bem diferente do fundo vira símbolo. Fundo liso ajuda muito.</p>
       <div class="exemplos">
         <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#111"/></svg>
           <figcaption><b>✓ Preto e branco</b>o ideal</figcaption></figure>
@@ -488,15 +531,15 @@
           <figcaption><b>✓ PNG sem fundo</b>transparente</figcaption></figure>
         <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#111"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#fff"/></svg>
           <figcaption><b>✓ Branco no preto</b>também vale</figcaption></figure>
-        <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="url(#multicor)"/></svg>
-          <figcaption><b>✗ Muitas cores</b>partes claras somem</figcaption></figure>
+        <figure class="bom"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#fff"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="url(#multicor)"/></svg>
+          <figcaption><b>✓ Colorida</b>em fundo liso</figcaption></figure>
         <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="url(#degrade)"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#333"/></svg>
           <figcaption><b>✗ Foto ou degradê</b>o fundo vira forma</figcaption></figure>
         <figure class="ruim"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="#eee"/><use href="#raioLogo" x="13" y="6" width="34" height="48" fill="#cfcfcf"/></svg>
           <figcaption><b>✗ Tom parecido</b>com o fundo</figcaption></figure>
       </div>
-      <p>💡 <b>Logo colorida?</b> Procure a versão de uma cor só (pesquise "nome da marca logo preto e branco") ou passe um filtro preto e branco com bastante contraste antes de enviar. Evite também texto miúdo e linhas muito finas.</p>
-      <div class="aviso-logo">Por enquanto o app não diferencia cores. Estamos trabalhando para ele reconhecer logos coloridas.</div>
+      <p>💡 <b>Logo colorida?</b> Depois de enviar, aparecem as <b>cores encontradas</b>: toque numa cor para tirá-la do símbolo (um texto, uma moldura). No passo 2, <b>Cores da logo</b> faz a arte brilhar nas cores dela. Evite texto miúdo e linhas muito finas.</p>
+      <div class="aviso-logo">Ainda funciona melhor com fundo liso, de uma cor só. Foto, degradê, sombra e cor muito parecida com a do fundo confundem a separação: nesses casos, use a versão em preto e branco da logo.</div>
     </div>
 
     <div class="pontos" id="pontosLogo"></div>
