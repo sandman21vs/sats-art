@@ -418,8 +418,8 @@ async def imagem(req: Request):
     uploads_em_curso += 1
     try:
         dados = await ler_corpo(req, cfg.max_upload_mb * 1024 * 1024, PRAZO_CORPO_S)
-        img_id = await render.guardar(dados, limites=limites_render(ip))
-        evento("imagem_recebida", bytes=len(dados), id=img_id)
+        img_id, cores = await render.guardar(dados, limites=limites_render(ip))
+        evento("imagem_recebida", bytes=len(dados), id=img_id, cores=len(cores))
     except ImagemInvalida as e:
         raise Recusado(400, str(e)) from e
     except Excesso as e:
@@ -428,7 +428,7 @@ async def imagem(req: Request):
         raise Recusado(503, "Servidor ocupado. Tente de novo em alguns segundos.") from e
     finally:
         uploads_em_curso -= 1
-    return {"id": img_id}
+    return {"id": img_id, "cores": cores}
 
 
 @app.post("/api/forma")

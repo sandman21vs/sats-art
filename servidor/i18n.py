@@ -13,6 +13,8 @@ MENSAGENS = {
     # servidor/main.py
     "Pedido de outra origem.": ("Request from another origin.", "Anfrage von einer anderen Herkunft."),
     "Pedido inválido.": ("Invalid request.", "Ungültige Anfrage."),
+    "Ajuste de cores da imagem inválido.": ("Invalid image color settings.", "Ungültige Farbeinstellungen für das Bild."),
+    "Cores da arte inválidas.": ("Invalid art colors.", "Ungültige Farben für das Bild."),
     "Erro interno. Tente de novo.": ("Internal error. Please try again.", "Interner Fehler. Versuch es noch einmal."),
     "Muitos pedidos seguidos. Espere um pouquinho.": (
         "Too many requests in a row. Wait a moment.", "Zu viele Anfragen hintereinander. Warte einen Moment."),
