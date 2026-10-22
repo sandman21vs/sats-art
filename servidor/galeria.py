@@ -378,7 +378,7 @@ def criar_router(*, cfg, render, ip_de, limitar, ler_json, Recusado, limites_ren
     async def sair():
         exigir_token()
         resp = JSONResponse({"ok": True}, headers=sem_cache)
-        resp.headers["Set-Cookie"] = "admin=; Path=/admin; HttpOnly; SameSite=Strict; Max-Age=0"
+        resp.headers["Set-Cookie"] = f"{admin_auth.COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
         return resp
 
     @r.get("/admin/galeria/itens")

@@ -260,7 +260,7 @@ def test_moderacao_com_token_errado_e_recusada(app):
         r = _pedir(app, "GET", "/admin/galeria/itens", headers={"Cookie": cookie} if cookie else {})
         assert r.status_code == 403, cookie
     r = _pedir(app, "POST", "/admin/galeria/moderar", json={"id": "AAAAAAAAAAAAAAAA", "acao": "apagar"},
-               headers={"Cookie": "admin=errado"})
+               headers={"Cookie": f"admin={TOKEN}"})  # o token cru não é sessão
     assert r.status_code == 403
     assert _pedir(app, "POST", "/admin/galeria/entrar", json={"token": "errado"}).status_code == 403
     codigos = [_pedir(app, "POST", "/admin/galeria/entrar", ip="9.9.9.9", json={"token": "x"}).status_code
@@ -272,8 +272,8 @@ def test_moderacao_esconde_mostra_e_apaga(app):
     r = _pedir(app, "POST", "/admin/galeria/entrar", json={"token": TOKEN})
     assert r.status_code == 200
     cookie = r.headers["set-cookie"]
-    assert "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Path=/admin" in cookie and "Secure" in cookie
-    adm = {"Cookie": f"outro=1; admin={TOKEN}"}
+    assert "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Path=/" in cookie and "Secure" in cookie
+    adm = {"Cookie": "outro=1; " + cookie.split(";")[0]}
     arte = _criar(app, seed=8, galeria=True, nome="<i>x</i>").json()["id"]
     for ip in ("10.2.0.1", "10.2.0.2", "10.2.0.3"):
         _pedir(app, "POST", "/api/galeria/denunciar", ip=ip, json={"id": arte})
@@ -304,3 +304,14 @@ def test_mensagens_da_galeria_tem_traducao():
     assert len(msgs) >= 8
     sem = sorted(m for m in msgs if i18n.traduzir(m, "en") == m or i18n.traduzir(m, "de") == m)
     assert not sem, sem
+
+
+def test_login_do_painel_vale_para_a_moderacao(app):
+    # a sessão gravada pelo login do /admin (servidor/admin.py) abre a moderação
+    from servidor.admin import COOKIE, _assinar
+    expira = str(int(time.time()) + 600)
+    adm = {"Cookie": f"{COOKIE}={expira}.{_assinar(TOKEN, expira)}"}
+    assert _pedir(app, "GET", "/admin/galeria/itens", headers=adm).status_code == 200
+    vencida = str(int(time.time()) - 1)
+    adm = {"Cookie": f"{COOKIE}={vencida}.{_assinar(TOKEN, vencida)}"}
+    assert _pedir(app, "GET", "/admin/galeria/itens", headers=adm).status_code == 403
