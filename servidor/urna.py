@@ -18,7 +18,8 @@ from fastapi.responses import FileResponse, HTMLResponse
 from . import antiabuso
 from .eventos import evento
 from .lnurl import LnurlErro
-from .recompensas import ResgateErro
+from .db import CONTA
+from .recompensas import ResgateErro, hoje
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(RAIZ, "static")
@@ -80,6 +81,15 @@ def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado,
             return token
         return None
 
+    def gerais():
+        """O que todo mundo vê, votando ou não: total de votos (sem dizer quem lidera) e o
+        quanto ainda sobra do limite de sats da urna no dia."""
+        gasto = db.um(f"SELECT COALESCE(SUM(sats + fee), 0) FROM resgates WHERE dia = ? AND tipo = 'urna' "
+                      f"AND status IN {CONTA}", hoje())[0]
+        return {"recompensas": bool(recompensas_de()), "numeros": list(NUMEROS),
+                "total_votos": votos.placar()["total"],
+                "urna_hoje": {"limite": cfg.urna_limite_dia_global, "gasto": gasto}}
+
     def resposta(cota, numero, token):
         r = {"votou": True, "numero": numero, "placar": votos.placar(), "token": token_vivo(token, cota)}
         r["sats"] = int(numero) if r["token"] else 0
@@ -103,7 +113,7 @@ def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado,
         """Quem ainda não votou não recebe o placar."""
         exigir_urna()
         limitar(lim_estado, ip_de(req))
-        base = {"recompensas": bool(recompensas_de()), "numeros": list(NUMEROS)}
+        base = gerais()
         cota = cota_de(req)
         voto = votos.voto_de(cota)
         if not voto:
@@ -125,7 +135,7 @@ def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado,
                 votos.guardar_token(cota, r.emitir_token(cota, tipo="urna", sats=int(numero)))
             evento("urna_voto", numero=numero, ip=antiabuso.hash_ip(cfg.ip_salt, ip)[:12])
         numero_gravado, token = votos.voto_de(cota)  # quem já tinha votado recebe o voto original
-        return resposta(cota, numero_gravado, token)
+        return {**gerais(), **resposta(cota, numero_gravado, token)}
 
     @router.post("/api/urna/resgatar")
     async def resgatar(req: Request):

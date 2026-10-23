@@ -7,51 +7,81 @@
 <meta name="description" content="Vote '13 ou '22 e receba esse tanto de sats. Brincadeira de segundo turno.">
 <style>
   :root {
-    --bg: #0e0d0d; --panel: #171515; --line: #2a2625; --text: #ece6e2; --muted: #9a8f88;
+    --bg: #0e0d0d; --panel: #171515; --panel-2: #1c1918; --line: #2a2625; --text: #ece6e2; --muted: #9a8f88;
     --accent: #ff6600; --accent-2: #ffb27f; --accent-soft: #ff66001f; --ok: #7fd18b; --erro: #ff8a7a;
     --urna: #d9d3c4; --urna-borda: #b9b2a2; --tela: #f4f1e8; --tela-texto: #1c1b19;
     --tecla: #1d1c1b; --tecla-texto: #f2f2f2;
+    --pirata: #ff5a44; --pirata-fundo: #2a0f0c;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: var(--bg); color: var(--text);
+  html, body { margin: 0; color: var(--text);
     font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  body { background: radial-gradient(1200px 500px at 15% -10%, #ff66001a, transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, #ff5a4412, transparent 60%), var(--bg); background-attachment: fixed;
+    min-height: 100vh; }
   [hidden] { display: none !important; }
   a { color: var(--accent-2); }
   button { font: inherit; cursor: pointer; }
   button:disabled { opacity: .45; cursor: default; }
-  input:focus, button:focus-visible { outline: 2px solid #ff660080; outline-offset: 2px; }
+  input:focus, button:focus-visible, a:focus-visible { outline: 2px solid #ff660080; outline-offset: 2px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
 
-  header { max-width: 1100px; margin: 0 auto; padding: 18px 16px 6px; display: flex; justify-content: space-between;
-    align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  h1 { font-size: 20px; margin: 0; }
+  /* ----- topo ----- */
+  header { padding-top: 22px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .marca-topo { display: flex; align-items: center; gap: 12px; }
+  .selo { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
+    background: linear-gradient(140deg, #ff6600, #ff9a4d); color: #1a0d04; box-shadow: 0 6px 24px #ff660040; flex: none; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: .01em; }
   h1 span { color: var(--accent); }
-  header p { margin: 2px 0 0; color: var(--muted); }
-  header a { font-size: 13px; }
+  header p { margin: 1px 0 0; color: var(--muted); }
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pilula { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text); text-decoration: none; font-size: 13px; }
+  .pilula:hover { border-color: #4a423f; }
+  .pilula.pirata { border-color: #6b2018; color: #ffd0c4; background: var(--pirata-fundo); }
+  .pilula.pirata:hover { border-color: var(--pirata); }
 
-  main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 32px; display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
-  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  /* ----- números do topo ----- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0 18px; }
+  @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+  .stat .rot { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .stat .val { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .stat .val small { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .stat .det { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .stat .det button { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline;
+    text-underline-offset: 2px; font-size: 12px; }
+  .mini-barra { height: 6px; border-radius: 3px; background: #262221; overflow: hidden; margin-top: 7px; }
+  .mini-barra i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .8s ease; }
+  .premios { display: flex; gap: 12px; }
+  .premios span { color: var(--accent-2); }
+
+  /* ----- grade principal ----- */
+  main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  .coluna { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
   /* ----- urna ----- */
-  .urna { background: var(--urna); border: 1px solid var(--urna-borda); border-radius: 14px; padding: 18px;
-    display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px;
-    box-shadow: 0 10px 40px #0008; }
+  .urna { background: linear-gradient(180deg, #e2dccd, var(--urna)); border: 1px solid var(--urna-borda); border-radius: 16px;
+    padding: 20px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(220px, 1fr); gap: 20px;
+    box-shadow: 0 18px 50px #000a, inset 0 1px 0 #fff8; }
   @media (max-width: 620px) { .urna { grid-template-columns: 1fr; padding: 12px; } }
-  .tela { background: var(--tela); color: var(--tela-texto); border: 6px solid #8f897c; border-radius: 6px;
-    min-height: 300px; padding: 14px 16px; display: flex; flex-direction: column;
-    font-family: Arial, Helvetica, sans-serif; }
+  .tela { background: var(--tela); color: var(--tela-texto); border: 7px solid #8f897c; border-radius: 6px;
+    min-height: 340px; padding: 16px 18px; display: flex; flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif; box-shadow: inset 0 2px 10px #0002; }
   .tela .cargo-topo { font-size: 13px; }
-  .tela .cargo { font-size: 24px; font-weight: 700; text-align: center; margin: 10px 0 18px; letter-spacing: .02em; }
-  .tela .linha { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 6px 0; }
+  .tela .cargo { font-size: clamp(20px, 2vw, 26px); font-weight: 700; text-align: center; margin: 12px 0 20px; letter-spacing: .02em; }
+  .tela .linha { display: flex; align-items: center; gap: 10px; font-size: 16px; margin: 6px 0; }
   .digitos { display: flex; gap: 6px; }
-  .digito { width: 36px; height: 44px; border: 1px solid #333; display: grid; place-items: center;
-    font-size: 30px; font-weight: 700; background: #fff; }
+  .digito { width: 40px; height: 50px; border: 1px solid #333; display: grid; place-items: center;
+    font-size: 34px; font-weight: 700; background: #fff; }
   .digito.atual { animation: pisca 1s steps(2) infinite; }
   @keyframes pisca { 50% { background: #c9c4b6; } }
-  .tela .aviso { font-size: 26px; font-weight: 700; text-align: center; margin: 14px 0 4px; }
+  .tela .aviso { font-size: 28px; font-weight: 700; text-align: center; margin: 14px 0 4px; }
   .tela .sub { text-align: center; font-size: 14px; }
   .tela .rodape { margin-top: auto; border-top: 1px solid #999; padding-top: 8px; font-size: 12.5px; }
-  .tela .fim { flex: 1; display: grid; place-items: center; font-size: 72px; font-weight: 700; letter-spacing: .08em;
+  .tela .fim { flex: 1; display: grid; place-items: center; font-size: 80px; font-weight: 700; letter-spacing: .08em;
     animation: surge .5s ease-out both; }
   @keyframes surge { from { opacity: 0; transform: scale(.85); letter-spacing: .4em; } }
   .tela .seu-voto { align-self: center; text-align: center; border: 3px solid var(--tela-texto); border-radius: 8px;
@@ -66,10 +96,11 @@
   .digito.novo { animation: pop .28s cubic-bezier(.2, 1.8, .4, 1); }
   @keyframes pop { from { transform: scale(1.6); background: #ffe2c9; } }
 
-  .teclado { background: #2b2a28; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-  .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .numeros button { background: var(--tecla); color: var(--tecla-texto); border: 0; border-radius: 6px; height: 46px;
-    font-size: 20px; font-weight: 700; box-shadow: inset 0 -3px 0 #000; }
+  .teclado { background: #2b2a28; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+    box-shadow: inset 0 2px 8px #0008; }
+  .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+  .numeros button { background: var(--tecla); color: var(--tecla-texto); border: 0; border-radius: 7px; height: 50px;
+    font-size: 21px; font-weight: 700; box-shadow: inset 0 -3px 0 #000; }
   .teclado button { position: relative; overflow: hidden; transition: transform .08s, box-shadow .08s, filter .15s; }
   .teclado button:hover:not(:disabled) { filter: brightness(1.18); }
   .teclado button.apertada { transform: translateY(3px) scale(.95); box-shadow: inset 0 0 0 #000, 0 0 14px #ff660088;
@@ -81,136 +112,247 @@
     animation: onda .5s ease-out forwards; }
   @keyframes onda { to { transform: scale(3); opacity: 0; } }
   .numeros .zero { grid-column: 2; }
-  .acoes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .acoes button { border: 0; border-radius: 6px; height: 44px; font-size: 11.5px; font-weight: 800; color: #111;
-    box-shadow: inset 0 -3px 0 #0005; }
+  .acoes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .acoes button { border: 0; border-radius: 7px; height: 46px; font-size: 11px; font-weight: 800; color: #111;
+    box-shadow: inset 0 -3px 0 #0005; padding: 0 2px; letter-spacing: -.01em; white-space: nowrap; }
   .acoes .branco { background: #f4f4f4; }
   .acoes .corrige { background: #f28b30; }
-  .acoes .confirma { background: #2eaa4a; height: 52px; align-self: end; }
+  .acoes .confirma { background: #2eaa4a; height: 54px; align-self: end; }
   .marca { color: #bdb6a6; font-size: 11px; text-align: center; letter-spacing: .1em; text-transform: uppercase; }
 
-  /* ----- resgate ----- */
-  .card { margin-top: 16px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
+  /* ----- cartões ----- */
+  .card { padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); }
   .card h2 { font-size: 16px; margin: 0 0 4px; }
   .card h2 b { color: var(--accent); }
   .card p { margin: 0 0 10px; color: var(--muted); }
+  .card .titulo { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 10px; }
   .resgate { display: flex; gap: 8px; flex-wrap: wrap; }
   .resgate input { flex: 1 1 220px; min-width: 0; font: inherit; color: var(--text); background: #1f1c1b;
-    border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; }
+    border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; }
   .primario { background: var(--accent); border: 1px solid var(--accent); color: #1a0d04; font-weight: 700;
-    border-radius: 9px; padding: 10px 16px; }
+    border-radius: 9px; padding: 11px 18px; }
   .msg { font-size: 13px; color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
   .msg.erro { color: var(--erro); }
   .msg.sucesso { color: var(--ok); }
+  .voce-votou { display: flex; align-items: center; gap: 14px; border-color: #ff660055;
+    background: linear-gradient(90deg, #ff660014, var(--panel) 60%); }
+  .voce-votou .grande { font-size: 38px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .dica { display: flex; gap: 12px; align-items: flex-start; }
+  .dica .ico { font-size: 22px; line-height: 1; }
+  .dica p { margin: 2px 0 0; }
 
   /* ----- apuração ----- */
-  .apuracao { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px; position: relative; }
-  .apuracao h2 { font-size: 15px; margin: 0 0 2px; }
+  .apuracao { position: relative; }
   .apuracao .total { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
-  .cand { margin-bottom: 14px; }
+  .cand { margin-bottom: 16px; }
   .cand .topo { display: flex; justify-content: space-between; align-items: baseline; }
-  .cand .num { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .cand .pct { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cand .num { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .cand .pct { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .cand .votos { color: var(--muted); font-size: 12px; }
-  .barra { height: 12px; border-radius: 6px; background: #262221; overflow: hidden; margin-top: 4px; }
-  .barra i { display: block; height: 100%; width: 0; border-radius: 6px; transition: width .8s ease; }
-  .cand.c13 .barra i { background: var(--accent); }
-  .cand.c22 .barra i { background: #c9c1b8; }
+  .barra { height: 14px; border-radius: 7px; background: #262221; overflow: hidden; margin-top: 4px; }
+  .barra i { display: block; height: 100%; width: 0; border-radius: 7px; transition: width .8s ease; }
+  .cand.c13 .barra i { background: linear-gradient(90deg, #ff6600, #ff9a4d); }
+  .cand.c22 .barra i { background: linear-gradient(90deg, #a79f96, #d6cec5); }
   .cand.lider .num::after { content: " ●"; font-size: 12px; color: var(--accent-2); vertical-align: middle; }
   .cand.meu { outline: 1px solid var(--accent); outline-offset: 6px; border-radius: 4px; }
   .cand.meu .votos::after { content: " · seu voto"; color: var(--accent-2); font-weight: 600; }
-  .voce-votou { display: flex; align-items: center; gap: 12px; }
-  .voce-votou .grande { font-size: 34px; font-weight: 800; color: var(--accent); line-height: 1; }
   .travada .dados { filter: blur(7px); opacity: .5; pointer-events: none; user-select: none; }
-  .cadeado { position: absolute; inset: 52px 16px 16px; display: grid; place-items: center; text-align: center;
+  .cadeado { position: absolute; inset: 70px 16px 16px; display: grid; place-items: center; text-align: center;
     color: var(--text); font-weight: 600; }
   .cadeado span { display: block; font-size: 28px; margin-bottom: 6px; }
-  .meu-voto { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .cadeado small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; }
+  .atualiza { font-size: 11.5px; color: var(--muted); }
 
-  .aviso-legal { max-width: 1100px; margin: 0 auto; padding: 0 16px 28px; color: var(--muted); font-size: 12px; }
+  /* ----- passo a passo ----- */
+  .passos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .passos li { display: flex; gap: 10px; align-items: flex-start; }
+  .passos .n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #1a0d04;
+    font-weight: 800; font-size: 12px; display: grid; place-items: center; }
+  .passos b { display: block; }
+  .passos span { color: var(--muted); font-size: 13px; }
+
+  /* ----- bounty + doação ----- */
+  .rodape-grade { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); gap: 20px; margin: 20px 0; }
+  @media (max-width: 960px) { .rodape-grade { grid-template-columns: 1fr; } }
+  .bounty { border-color: #6b2018; background: linear-gradient(135deg, #3b0d0d, #1b0c0b 70%); position: relative; overflow: hidden; }
+  .bounty::after { content: "🏴‍☠️"; position: absolute; right: -10px; bottom: -26px; font-size: 130px; opacity: .08;
+    transform: rotate(-12deg); pointer-events: none; }
+  .bounty h2 { font-size: 19px; color: #ffd0c4; }
+  .bounty .destaque { color: var(--text); font-size: 15px; margin: 10px 0 12px; }
+  .bounty .destaque b { color: var(--pirata); font-size: 28px; vertical-align: -3px; }
+  .bounty ol { margin: 0 0 12px; padding-left: 20px; color: #e8d6d0; }
+  .bounty ol li { margin-bottom: 6px; }
+  .bounty .fora { font-size: 12px; color: #c4a8a0; }
+  .bounty a { color: #ffb4a6; }
+  .doar .qr { background: #fff; border-radius: 10px; padding: 8px; width: 150px; height: 150px; margin: 4px auto 10px; }
+  .doar .qr svg { width: 100%; height: 100%; display: block; }
+  .copia { display: flex; gap: 6px; align-items: center; background: #1f1c1b; border: 1px solid var(--line);
+    border-radius: 9px; padding: 6px 6px 6px 10px; }
+  .copia code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .copia button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 7px; padding: 5px 10px; font-size: 12px; }
+
+  .aviso-legal { color: var(--muted); font-size: 12px; padding-bottom: 30px; border-top: 1px solid var(--line); padding-top: 14px; }
 
   .cai { position: fixed; top: -30px; pointer-events: none; animation: cair 2.6s linear forwards; z-index: 9; }
   @keyframes cair { to { transform: translateY(110vh) rotate(260deg); opacity: .2; } }
   @media (prefers-reduced-motion: reduce) {
     .digito.atual, .digito.novo, .tela .fim, .tela .seu-voto, .tela.flash, .tela.treme, .onda { animation: none; }
-    .barra i, .teclado button { transition: none; }
+    .barra i, .mini-barra i, .teclado button { transition: none; }
   }
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>Urna dos <span>Sats</span></h1>
-    <p>Vote <b>'13</b> ou <b>'22</b> e receba esse tanto de sats.</p>
-  </div>
-  <a href="/">← voltar para a Rede de Nós</a>
-</header>
-
-<main>
-  <section>
-    <div class="urna">
-      <div class="tela" id="tela" aria-live="polite"></div>
-      <div class="teclado">
-        <div class="numeros" id="numeros">
-          <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
-          <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
-          <button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button>
-          <button data-n="0" class="zero">0</button>
-        </div>
-        <div class="acoes">
-          <button class="branco" id="branco">BRANCO</button>
-          <button class="corrige" id="corrige">CORRIGE</button>
-          <button class="confirma" id="confirma">CONFIRMA</button>
-        </div>
-        <div class="marca">Justiça dos Sats</div>
+<div class="wrap">
+  <header>
+    <div class="marca-topo">
+      <div class="selo">⚡</div>
+      <div>
+        <h1>Urna dos <span>Sats</span></h1>
+        <p>Vote <b>'13</b> ou <b>'22</b> e receba esse tanto de sats na hora.</p>
       </div>
     </div>
+    <nav class="nav">
+      <a class="pilula pirata" href="#bounty">🏴‍☠️ Tente roubar o pote</a>
+      <a class="pilula" href="/">← Rede de Nós</a>
+    </nav>
+  </header>
 
-    <div class="card voce-votou" id="cardVoto" hidden>
-      <div class="grande" id="numeroVoto"></div>
-      <div><h2 style="margin:0">Você votou <span id="textoVoto"></span></h2>
-        <p style="margin:0">Seu voto já entrou na apuração.</p></div>
+  <section class="stats" aria-label="Números da urna">
+    <div class="stat">
+      <div class="rot">Pote coletivo</div>
+      <div class="val" id="statPote">…</div>
+      <div class="det">paga os votos e as artes · <button id="irDoar">doar ⚡</button></div>
     </div>
-    <div class="card" id="cardResgate" hidden>
-      <h2>Seu voto vale <b id="valorVoto">0</b> sats</h2>
-      <p>Coloque seu endereço Lightning da Coinos para receber.</p>
-      <div class="resgate" id="formResgate">
-        <input type="text" id="ln" placeholder="voce@coinos.io" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button class="primario" id="receber">Receber</button>
-      </div>
-      <div class="msg" id="msgResgate"></div>
+    <div class="stat">
+      <div class="rot">Sats da urna hoje</div>
+      <div class="val" id="statHoje">…</div>
+      <div class="mini-barra"><i id="barraHoje"></i></div>
+      <div class="det" id="statHojeDet">ainda disponíveis para votos</div>
     </div>
-    <div class="card" id="cardSemSats" hidden>
-      <h2>Voto registrado</h2>
-      <p id="textoSemSats"></p>
+    <div class="stat">
+      <div class="rot">Votos apurados</div>
+      <div class="val" id="statVotos">…</div>
+      <div class="det" id="statVotosDet">o placar abre depois do seu voto</div>
+    </div>
+    <div class="stat">
+      <div class="rot">Quanto vale cada voto</div>
+      <div class="val premios"><div>'13 <span>→ 13</span></div><div>'22 <span>→ 22</span></div></div>
+      <div class="det">sats direto na sua carteira Coinos</div>
     </div>
   </section>
 
-  <aside class="apuracao travada" id="apuracao">
-    <h2>Apuração</h2>
-    <p class="total" id="total">—</p>
-    <div class="dados">
-      <div class="cand c13" id="c13">
-        <div class="topo"><span class="num">'13</span><span class="pct" id="pct13">50%</span></div>
-        <div class="barra"><i id="barra13"></i></div>
-        <div class="votos" id="votos13">— votos</div>
+  <main>
+    <div class="coluna">
+      <div class="urna">
+        <div class="tela" id="tela" aria-live="polite"></div>
+        <div class="teclado">
+          <div class="numeros" id="numeros">
+            <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
+            <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+            <button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button>
+            <button data-n="0" class="zero">0</button>
+          </div>
+          <div class="acoes">
+            <button class="branco" id="branco">BRANCO</button>
+            <button class="corrige" id="corrige">CORRIGE</button>
+            <button class="confirma" id="confirma">CONFIRMA</button>
+          </div>
+          <div class="marca">Justiça dos Sats</div>
+        </div>
       </div>
-      <div class="cand c22" id="c22">
-        <div class="topo"><span class="num">'22</span><span class="pct" id="pct22">50%</span></div>
-        <div class="barra"><i id="barra22"></i></div>
-        <div class="votos" id="votos22">— votos</div>
-      </div>
-      <div class="meu-voto" id="meuVoto"></div>
-    </div>
-    <div class="cadeado" id="cadeado"><div><span>🔒</span>Vote para ver a apuração</div></div>
-  </aside>
-</main>
 
-<p class="aviso-legal">
-  Isto é uma brincadeira, não é pesquisa eleitoral: qualquer pessoa vota, um voto por conexão, e o
-  resultado não representa ninguém. Os sats saem do pote da Rede de Nós enquanto houver saldo. No dia
-  da eleição, vote de verdade na sua seção.
-</p>
+      <div class="card dica" id="cardDica">
+        <div class="ico">⌨️</div>
+        <div><h2>Dá para votar pelo teclado</h2>
+          <p>Digite os números, <b>Backspace</b> corrige e <b>Enter</b> confirma.</p></div>
+      </div>
+      <div class="card voce-votou" id="cardVoto" hidden>
+        <div class="grande" id="numeroVoto"></div>
+        <div><h2 style="margin:0">Você votou <span id="textoVoto"></span></h2>
+          <p style="margin:0">Seu voto já entrou na apuração.</p></div>
+      </div>
+      <div class="card" id="cardResgate" hidden>
+        <h2>Seu voto vale <b id="valorVoto">0</b> sats</h2>
+        <p>Coloque seu endereço Lightning da Coinos para receber. Não tem? Crie grátis em
+          <a href="https://coinos.io" target="_blank" rel="noopener">coinos.io</a> em 1 minuto.</p>
+        <div class="resgate" id="formResgate">
+          <input type="text" id="ln" placeholder="voce@coinos.io" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button class="primario" id="receber">Receber</button>
+        </div>
+        <div class="msg" id="msgResgate"></div>
+      </div>
+      <div class="card" id="cardSemSats" hidden>
+        <h2>Voto registrado</h2>
+        <p id="textoSemSats"></p>
+      </div>
+    </div>
+
+    <aside class="coluna">
+      <div class="card apuracao travada" id="apuracao">
+        <div class="titulo">Apuração</div>
+        <p class="total" id="total">—</p>
+        <div class="dados">
+          <div class="cand c13" id="c13">
+            <div class="topo"><span class="num">'13</span><span class="pct" id="pct13">50%</span></div>
+            <div class="barra"><i id="barra13"></i></div>
+            <div class="votos" id="votos13">— votos</div>
+          </div>
+          <div class="cand c22" id="c22">
+            <div class="topo"><span class="num">'22</span><span class="pct" id="pct22">50%</span></div>
+            <div class="barra"><i id="barra22"></i></div>
+            <div class="votos" id="votos22">— votos</div>
+          </div>
+          <div class="atualiza">Atualiza sozinha a cada 20 segundos.</div>
+        </div>
+        <div class="cadeado" id="cadeado"><div><span>🔒</span>Vote para ver a apuração<small>Ninguém vê quem está ganhando antes de votar.</small></div></div>
+      </div>
+
+      <div class="card">
+        <div class="titulo">Como funciona</div>
+        <ol class="passos">
+          <li><div class="n">1</div><div><b>Digite 13 ou 22</b><span>Na urna ou no teclado do computador.</span></div></li>
+          <li><div class="n">2</div><div><b>Aperte CONFIRMA</b><span>Um voto por conexão. Depois, a apuração abre.</span></div></li>
+          <li><div class="n">3</div><div><b>Cole seu @coinos.io</b><span>Uma verificação anti-robô roda no seu navegador.</span></div></li>
+          <li><div class="n">4</div><div><b>Receba os sats</b><span>13 ou 22, direto do pote, enquanto houver saldo.</span></div></li>
+        </ol>
+      </div>
+    </aside>
+  </main>
+
+  <div class="rodape-grade">
+    <section class="card bounty" id="bounty">
+      <div class="titulo" style="color:#e9a99c">Bug bounty</div>
+      <h2>🏴‍☠️ Pode atacar: tente roubar o pote</h2>
+      <p style="color:#d8bfb8">O projeto é open source e roda de propósito com pouco dinheiro no pote. Ataques são
+        bem-vindos: é assim que ele fica seguro. A urna usa o mesmo pote e as mesmas defesas.</p>
+      <p class="destaque">Conseguiu esvaziar o pote? Fique com <b id="bountyPct">70%</b> do que pegou.</p>
+      <ol>
+        <li>Mande um e-mail para <a id="bountyEmail" href="#">…</a> explicando como fez (passo a passo, se puder).</li>
+        <li>Devolva o restante para o endereço de doação do pote, para o projeto continuar pagando outras pessoas.</li>
+        <li>Achou uma falha sem conseguir tirar sats? Mande também: entra nos créditos do projeto.</li>
+      </ol>
+      <p class="fora"><b>Fora do escopo:</b> atacar a Coinos, carteiras ou serviços de terceiros, outros visitantes,
+        a hospedagem ou a rede (DDoS volumétrico), e engenharia social. Vale só esta instância e este pote.
+        <span id="bountyRepo" hidden> · <a href="#" target="_blank" rel="noopener">Regras completas (SECURITY.md)</a></span></p>
+    </section>
+
+    <section class="card doar" id="doar">
+      <div class="titulo">Doe para o pote ⚡</div>
+      <p>Cada sat doado vira voto pago ou arte premiada. Quanto mais gente doa, mais gente ganha.</p>
+      <div id="doarEndereco" hidden>
+        <div class="qr" id="qrEndereco"></div>
+        <div class="copia"><code id="txtEndereco"></code><button id="copiarEndereco">Copiar</button></div>
+      </div>
+      <p id="semDoacao" hidden>O endereço de doação não está configurado neste servidor.</p>
+    </section>
+  </div>
+
+  <p class="aviso-legal">
+    Isto é uma brincadeira, não é pesquisa eleitoral: qualquer pessoa vota, um voto por conexão, e o
+    resultado não representa ninguém. Os sats saem do pote da Rede de Nós enquanto houver saldo. No dia
+    da eleição, vote de verdade na sua seção.
+  </p>
+</div>
 
 <script src="/urna.js"></script>
 </body>

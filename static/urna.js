@@ -144,6 +144,8 @@ document.addEventListener("keydown", (e) => {
 function mostrarVoto(j) {
   votou = true; ESTADO = { ...ESTADO, ...j }; token = j.token; meuNumero = j.numero;
   desenhar();
+  gerais(j);
+  $("cardDica").hidden = true;
   $("numeroVoto").textContent = "'" + j.numero;
   $("textoVoto").textContent = "'" + j.numero;
   $("cardVoto").hidden = false;
@@ -179,17 +181,72 @@ function placar(p, meu) {
     $("c" + n).classList.toggle("lider", lider === n);
     $("c" + n).classList.toggle("meu", meu === n);
   }
-  if (meu) $("meuVoto").textContent = `Seu voto: '${meu}`;
 }
 
-// a apuração continua andando enquanto a página estiver aberta
-setInterval(async () => {
-  if (!votou || document.hidden) return;
+// ---------- números do topo (todo mundo vê; o placar não) ----------
+const num = (n) => Number(n).toLocaleString("pt-BR");
+function gerais(j) {
+  if (j.total_votos != null) {
+    $("statVotos").textContent = num(j.total_votos);
+    if (!votou) $("total").textContent = `${num(j.total_votos)} ${j.total_votos === 1 ? "voto" : "votos"} até agora`;
+    $("statVotosDet").textContent = votou ? "contando o seu" : "o placar abre depois do seu voto";
+  }
+  const h = j.urna_hoje;
+  if (!j.recompensas) {
+    $("statHoje").textContent = "desligado";
+  } else if (h) {
+    const resta = Math.max(0, h.limite - h.gasto);
+    $("statHoje").innerHTML = "";
+    $("statHoje").append(num(resta), el("small", "", ` / ${num(h.limite)} sats`));
+    $("statHojeDet").textContent = resta ? "ainda disponíveis para votos" : "acabou por hoje, volte amanhã";
+    $("barraHoje").style.width = Math.min(100, (100 * resta) / (h.limite || 1)) + "%";
+  }
+}
+
+async function infos() {
+  try {
+    const r = await fetch("/api/info", { headers: { "X-Idioma": "pt" } });
+    if (!r.ok) return;
+    const i = await r.json();
+    $("statPote").textContent = i.pote == null ? (i.recompensas ? "…" : "—") : `${num(i.pote)} sats`;
+    $("bountyPct").textContent = (i.bounty_percentual || 70) + "%";
+    const email = i.bounty_email || "";
+    $("bountyEmail").textContent = email;
+    $("bountyEmail").href = "mailto:" + email + "?subject=" + encodeURIComponent("Bug bounty - Urna dos Sats");
+    if (i.repo_url) {
+      $("bountyRepo").hidden = false;
+      $("bountyRepo").querySelector("a").href = i.repo_url.replace(/\/$/, "") + "/blob/main/SECURITY.md";
+    }
+    if (i.doacao_endereco) {
+      $("qrEndereco").innerHTML = i.doacao_qr || "";  // SVG gerado pelo próprio servidor
+      $("txtEndereco").textContent = i.doacao_endereco;
+      $("doarEndereco").hidden = false;
+    } else {
+      $("semDoacao").hidden = false;
+    }
+  } catch { /* os números do topo ficam com "…" */ }
+}
+
+$("irDoar").addEventListener("click", () => $("doar").scrollIntoView({ behavior: "smooth", block: "center" }));
+$("copiarEndereco").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("txtEndereco").textContent);
+    $("copiarEndereco").textContent = "Copiado!";
+    setTimeout(() => { $("copiarEndereco").textContent = "Copiar"; }, 1500);
+  } catch { /* sem área de transferência: o endereço continua visível para copiar à mão */ }
+});
+
+// a apuração e os números continuam andando enquanto a página estiver aberta
+async function atualizar() {
   try {
     const r = await fetch("/api/urna");
-    if (r.ok) { const j = await r.json(); if (j.votou) placar(j.placar, j.numero); }
+    if (!r.ok) return;
+    const j = await r.json();
+    gerais(j);
+    if (votou && j.votou) placar(j.placar, j.numero);
   } catch { /* tenta de novo no próximo ciclo */ }
-}, 20000);
+}
+setInterval(() => { if (!document.hidden) atualizar(); }, 20000);
 
 // ---------- resgate ----------
 $("receber").addEventListener("click", receber);
@@ -213,6 +270,7 @@ async function receber() {
     $("formResgate").hidden = true;
     mensagem(msg, `Pronto! ${j.sats} sats a caminho da sua carteira.`, "sucesso");
     chuvaDeSats(j.sats);
+    infos(); atualizar();
   } catch (e) {
     mensagem(msg, e.message, "erro");
     $("receber").disabled = false;
@@ -281,6 +339,8 @@ async function provaDeTrabalho() {
   try {
     const r = await fetch("/api/urna");
     ESTADO = await r.json();
+    gerais(ESTADO);
     if (ESTADO.votou) mostrarVoto(ESTADO);
   } catch { ESTADO = { recompensas: false }; }
 })();
+infos();

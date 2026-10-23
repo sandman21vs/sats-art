@@ -133,6 +133,7 @@ def test_placar_so_depois_de_votar_e_um_voto_por_pessoa():
         async with _cliente(app) as c:
             antes = (await c.get("/api/urna")).json()
             assert antes["votou"] is False and "placar" not in antes
+            assert antes["total_votos"] == 0 and antes["urna_hoje"] == {"limite": 500, "gasto": 0}
             v = (await c.post("/api/urna/votar", json={"numero": "22"})).json()
             assert v["numero"] == "22" and v["sats"] == 22 and v["token"]
             assert v["placar"] == {"13": 0, "22": 1, "total": 1}
@@ -148,7 +149,9 @@ def test_placar_so_depois_de_votar_e_um_voto_por_pessoa():
             depois = (await c.get("/api/urna")).json()
             assert depois["votou"] and depois["token"] is None and depois["sats"] == 0
         async with _cliente(app, ip="200.1.2.3") as c:
-            assert "placar" not in (await c.get("/api/urna")).json()
+            outro = (await c.get("/api/urna")).json()
+            # quem não votou vê quantos votaram e o gasto do dia, mas não quem lidera
+            assert "placar" not in outro and outro["total_votos"] == 1 and outro["urna_hoje"]["gasto"] == 22
             assert (await c.post("/api/urna/votar", json={"numero": "13"})).json()["placar"] == \
                 {"13": 1, "22": 1, "total": 2}
     rodar(t())
