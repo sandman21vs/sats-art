@@ -51,13 +51,35 @@
   .tela .aviso { font-size: 26px; font-weight: 700; text-align: center; margin: 14px 0 4px; }
   .tela .sub { text-align: center; font-size: 14px; }
   .tela .rodape { margin-top: auto; border-top: 1px solid #999; padding-top: 8px; font-size: 12.5px; }
-  .tela .fim { flex: 1; display: grid; place-items: center; font-size: 72px; font-weight: 700; letter-spacing: .08em; }
+  .tela .fim { flex: 1; display: grid; place-items: center; font-size: 72px; font-weight: 700; letter-spacing: .08em;
+    animation: surge .5s ease-out both; }
+  @keyframes surge { from { opacity: 0; transform: scale(.85); letter-spacing: .4em; } }
+  .tela .seu-voto { align-self: center; text-align: center; border: 3px solid var(--tela-texto); border-radius: 8px;
+    padding: 6px 22px 8px; margin-bottom: 6px; transform: rotate(-4deg); animation: carimbo .45s cubic-bezier(.2, 1.6, .4, 1) .9s both; }
+  .tela .seu-voto small { display: block; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+  .tela .seu-voto b { font-size: 40px; line-height: 1.1; }
+  @keyframes carimbo { from { opacity: 0; transform: rotate(-4deg) scale(2.2); } }
+  .tela.flash { animation: flash .35s ease-out; }
+  @keyframes flash { 0% { background: #c8f0cf; } 100% { background: var(--tela); } }
+  .tela.treme { animation: treme .3s; }
+  @keyframes treme { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  .digito.novo { animation: pop .28s cubic-bezier(.2, 1.8, .4, 1); }
+  @keyframes pop { from { transform: scale(1.6); background: #ffe2c9; } }
 
   .teclado { background: #2b2a28; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
   .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .numeros button { background: var(--tecla); color: var(--tecla-texto); border: 0; border-radius: 6px; height: 46px;
     font-size: 20px; font-weight: 700; box-shadow: inset 0 -3px 0 #000; }
-  .numeros button:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 #000; }
+  .teclado button { position: relative; overflow: hidden; transition: transform .08s, box-shadow .08s, filter .15s; }
+  .teclado button:hover:not(:disabled) { filter: brightness(1.18); }
+  .teclado button.apertada { transform: translateY(3px) scale(.95); box-shadow: inset 0 0 0 #000, 0 0 14px #ff660088;
+    filter: brightness(1.45); }
+  .acoes .confirma.apertada { box-shadow: 0 0 18px #2eaa4acc; }
+  .acoes .corrige.apertada { box-shadow: 0 0 18px #f28b30cc; }
+  .acoes .branco.apertada { box-shadow: 0 0 18px #ffffffaa; }
+  .onda { position: absolute; border-radius: 50%; background: #ffffff66; transform: scale(0); pointer-events: none;
+    animation: onda .5s ease-out forwards; }
+  @keyframes onda { to { transform: scale(3); opacity: 0; } }
   .numeros .zero { grid-column: 2; }
   .acoes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .acoes button { border: 0; border-radius: 6px; height: 44px; font-size: 11.5px; font-weight: 800; color: #111;
@@ -95,6 +117,10 @@
   .cand.c13 .barra i { background: var(--accent); }
   .cand.c22 .barra i { background: #c9c1b8; }
   .cand.lider .num::after { content: " ●"; font-size: 12px; color: var(--accent-2); vertical-align: middle; }
+  .cand.meu { outline: 1px solid var(--accent); outline-offset: 6px; border-radius: 4px; }
+  .cand.meu .votos::after { content: " · seu voto"; color: var(--accent-2); font-weight: 600; }
+  .voce-votou { display: flex; align-items: center; gap: 12px; }
+  .voce-votou .grande { font-size: 34px; font-weight: 800; color: var(--accent); line-height: 1; }
   .travada .dados { filter: blur(7px); opacity: .5; pointer-events: none; user-select: none; }
   .cadeado { position: absolute; inset: 52px 16px 16px; display: grid; place-items: center; text-align: center;
     color: var(--text); font-weight: 600; }
@@ -105,7 +131,10 @@
 
   .cai { position: fixed; top: -30px; pointer-events: none; animation: cair 2.6s linear forwards; z-index: 9; }
   @keyframes cair { to { transform: translateY(110vh) rotate(260deg); opacity: .2; } }
-  @media (prefers-reduced-motion: reduce) { .digito.atual { animation: none; } .barra i { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .digito.atual, .digito.novo, .tela .fim, .tela .seu-voto, .tela.flash, .tela.treme, .onda { animation: none; }
+    .barra i, .teclado button { transition: none; }
+  }
 </style>
 </head>
 <body>
@@ -137,6 +166,11 @@
       </div>
     </div>
 
+    <div class="card voce-votou" id="cardVoto" hidden>
+      <div class="grande" id="numeroVoto"></div>
+      <div><h2 style="margin:0">Você votou <span id="textoVoto"></span></h2>
+        <p style="margin:0">Seu voto já entrou na apuração.</p></div>
+    </div>
     <div class="card" id="cardResgate" hidden>
       <h2>Seu voto vale <b id="valorVoto">0</b> sats</h2>
       <p>Coloque seu endereço Lightning da Coinos para receber.</p>

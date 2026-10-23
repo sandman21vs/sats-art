@@ -8,7 +8,7 @@ const lembrar = (k) => { try { return localStorage.getItem(k) || ""; } catch { r
 const mensagem = (el, texto, tipo = "") => { el.className = "msg " + tipo; el.textContent = texto; };
 const NUMEROS = ["13", "22"];
 
-let digitado = "", branco = false, votou = false, enviando = false;
+let digitado = "", branco = false, votou = false, enviando = false, novo = -1, meuNumero = "";
 let ESTADO = null, token = null;
 
 // ---------- som (bipe das teclas e o "pi-pi-pi-piii" do fim) ----------
@@ -38,6 +38,11 @@ function desenhar() {
   tela.replaceChildren();
   if (votou) {
     tela.append(el("div", "fim", "FIM"));
+    if (meuNumero) {
+      const c = el("div", "seu-voto");
+      c.append(el("small", "", "SEU VOTO"), el("b", "", "'" + meuNumero));
+      tela.append(c);
+    }
     return;
   }
   tela.append(el("div", "cargo-topo", "SEU VOTO PARA"), el("div", "cargo", "PRESIDENTE DOS SATS"));
@@ -47,7 +52,10 @@ function desenhar() {
     const linha = el("div", "linha");
     linha.append(el("span", "", "Número:"));
     const caixas = el("div", "digitos");
-    for (let i = 0; i < 2; i++) caixas.append(el("div", "digito" + (i === digitado.length ? " atual" : ""), digitado[i] || ""));
+    for (let i = 0; i < 2; i++) {
+      caixas.append(el("div", "digito" + (i === digitado.length ? " atual" : "") + (i === novo ? " novo" : ""), digitado[i] || ""));
+    }
+    novo = -1;
     linha.append(caixas);
     tela.append(linha);
     if (digitado.length === 2) {
@@ -67,11 +75,37 @@ function desenhar() {
   $("confirma").disabled = !(digitado.length === 2 && NUMEROS.includes(digitado)) || enviando;
 }
 
+// ---------- teclas: afundam, acendem e soltam uma onda de onde foram tocadas ----------
+function apertar(botao, ev) {
+  if (!botao || botao.disabled) return;
+  botao.classList.remove("apertada");
+  void botao.offsetWidth;  // reinicia a animação se a tecla for apertada de novo logo em seguida
+  botao.classList.add("apertada");
+  setTimeout(() => botao.classList.remove("apertada"), 160);
+  const r = botao.getBoundingClientRect(), lado = Math.max(r.width, r.height);
+  const x = ev && ev.clientX ? ev.clientX - r.left : r.width / 2, y = ev && ev.clientY ? ev.clientY - r.top : r.height / 2;
+  const o = el("span", "onda");
+  Object.assign(o.style, { width: lado + "px", height: lado + "px", left: x - lado / 2 + "px", top: y - lado / 2 + "px" });
+  botao.append(o);
+  setTimeout(() => o.remove(), 520);
+}
+function efeitoTela(classe) {
+  const tela = $("tela");
+  tela.classList.remove(classe);
+  void tela.offsetWidth;
+  tela.classList.add(classe);
+}
+
 function tecla(n) {
   if (votou || branco || digitado.length >= 2) return;
-  somTecla(); digitado += n; desenhar();
+  somTecla(); novo = digitado.length; digitado += n; desenhar();
 }
-function corrige() { if (votou) return; somTecla(); digitado = ""; branco = false; desenhar(); }
+function corrige() {
+  if (votou) return;
+  somTecla();
+  if (digitado || branco) efeitoTela("treme");
+  digitado = ""; branco = false; desenhar();
+}
 function emBranco() { if (votou || digitado) return; somTecla(); branco = true; desenhar(); }
 
 async function confirma() {
@@ -82,6 +116,7 @@ async function confirma() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.erro || "Não consegui registrar o voto.");
     somFim();
+    efeitoTela("flash");
     mostrarVoto(j);
   } catch (e) {
     alert(e.message);
@@ -90,21 +125,28 @@ async function confirma() {
   }
 }
 
-$("numeros").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) tecla(b.dataset.n); });
-$("corrige").addEventListener("click", corrige);
-$("branco").addEventListener("click", emBranco);
-$("confirma").addEventListener("click", confirma);
+$("numeros").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b) { apertar(b, e); tecla(b.dataset.n); }
+});
+$("corrige").addEventListener("click", (e) => { apertar($("corrige"), e); corrige(); });
+$("branco").addEventListener("click", (e) => { apertar($("branco"), e); emBranco(); });
+$("confirma").addEventListener("click", (e) => { apertar($("confirma"), e); confirma(); });
+// o teclado do computador também "aperta" a tecla da urna na tela
 document.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (/^[0-9]$/.test(e.key)) tecla(e.key);
-  else if (e.key === "Backspace") corrige();
-  else if (e.key === "Enter") confirma();
+  if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (/^[0-9]$/.test(e.key)) { if (!votou) apertar(document.querySelector(`#numeros [data-n="${e.key}"]`)); tecla(e.key); }
+  else if (e.key === "Backspace") { if (!votou) apertar($("corrige")); corrige(); }
+  else if (e.key === "Enter") { e.preventDefault(); apertar($("confirma")); confirma(); }
 });
 
 // ---------- depois do voto ----------
 function mostrarVoto(j) {
-  votou = true; ESTADO = { ...ESTADO, ...j }; token = j.token;
+  votou = true; ESTADO = { ...ESTADO, ...j }; token = j.token; meuNumero = j.numero;
   desenhar();
+  $("numeroVoto").textContent = "'" + j.numero;
+  $("textoVoto").textContent = "'" + j.numero;
+  $("cardVoto").hidden = false;
   for (const b of document.querySelectorAll(".teclado button")) b.disabled = true;
   placar(j.placar, j.numero);
   if (token) {
@@ -135,6 +177,7 @@ function placar(p, meu) {
     $("barra" + n).style.width = pct + "%";
     $("votos" + n).textContent = `${p[n]} ${p[n] === 1 ? "voto" : "votos"}`;
     $("c" + n).classList.toggle("lider", lider === n);
+    $("c" + n).classList.toggle("meu", meu === n);
   }
   if (meu) $("meuVoto").textContent = `Seu voto: '${meu}`;
 }
