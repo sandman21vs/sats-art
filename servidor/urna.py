@@ -9,6 +9,7 @@
 Desligada por padrão (URNA_ATIVA=1 liga). Desligada, todas as rotas respondem 404.
 Registrado em main.py por `criar_router(...)`, como a galeria.
 """
+import asyncio
 import os
 import time
 
@@ -20,11 +21,13 @@ from .eventos import evento
 from .lnurl import LnurlErro
 from .db import CONTA
 from .recompensas import ResgateErro, hoje
+from .telegram import TelegramErro
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(RAIZ, "static")
 
 NUMEROS = ("13", "22")  # o número é também o valor do voto em sats
+AVISOS_POR_HORA = 30    # avisos de voto no Telegram; o excesso vai somado no aviso seguinte
 
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS votos (
@@ -76,6 +79,42 @@ class Votos:
         return {**p, "total": sum(p.values())}
 
 
+class AvisoVotos:
+    """Avisa no Telegram do dono a cada voto, em segundo plano (o voto não espera o Telegram).
+
+    Uma enxurrada de votos (várias conexões) não vira spam: passando de AVISOS_POR_HORA, os votos
+    só são contados e entram como "+N" no próximo aviso que sair."""
+
+    def __init__(self, telegram_de, votos, por_hora=None):
+        self.telegram_de, self.votos = telegram_de, votos
+        self.lim = antiabuso.Limitador(por_hora or AVISOS_POR_HORA, 3600)
+        self.calados = 0
+        self._tarefas = set()  # referência forte: a tarefa não some antes de terminar
+
+    def votou(self, numero):
+        tg = self.telegram_de()
+        if not tg:
+            return
+        if not self.lim.permitir("todos"):
+            self.calados += 1
+            return
+        p = self.votos.placar()
+        texto = (f"🗳️ Novo voto na Urna dos Sats: '{numero}\n"
+                 f"Apuração: '13 → {p['13']} · '22 → {p['22']} ({p['total']} votos)")
+        if self.calados:
+            texto += f"\n(+{self.calados} voto(s) sem aviso, por excesso de votos na última hora)"
+            self.calados = 0
+        t = asyncio.create_task(self._enviar(tg, texto))
+        self._tarefas.add(t)
+        t.add_done_callback(self._tarefas.discard)
+
+    async def _enviar(self, tg, texto):
+        try:
+            await tg.enviar(texto)
+        except TelegramErro as e:
+            evento("urna_aviso_falhou", "warning", motivo=str(e))
+
+
 def resumo_admin(db, cfg, dias):
     """Números da urna para o painel /admin: placar completo, votos e sats por dia, gasto de hoje."""
     votos = Votos(db)
@@ -117,9 +156,11 @@ def contexto_relato(db, votos, cota, cfg, recompensas):
     return linhas
 
 
-def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado, versao, votos=None):
+def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado, versao, votos=None,
+                 telegram_de=lambda: None):
     router = APIRouter()
     votos = votos or Votos(db)
+    aviso = AvisoVotos(lambda: telegram_de() if cfg.urna_avisar_votos else None, votos)
     lim_estado = antiabuso.Limitador(60, 60)
     lim_voto = antiabuso.Limitador(10, 600)
     lim_resgate = antiabuso.Limitador(10, 600)
@@ -192,6 +233,7 @@ def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado,
             if r:  # o token só nasce depois do voto gravado: dois cliques não rendem dois tokens
                 votos.guardar_token(cota, r.emitir_token(cota, tipo="urna", sats=int(numero)))
             evento("urna_voto", numero=numero, ip=antiabuso.hash_ip(cfg.ip_salt, ip)[:12])
+            aviso.votou(numero)
         numero_gravado, token = votos.voto_de(cota)  # quem já tinha votado recebe o voto original
         return {**gerais(), **resposta(cota, numero_gravado, token)}
 

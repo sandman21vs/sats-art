@@ -70,6 +70,8 @@ class Config:
     # 0 = sem limite por dia) e reserva do pote própria (a urna para quando o pote chega nela)
     urna_ativa: bool = field(default_factory=lambda: _bool("URNA_ATIVA"))
     urna_limite_dia_global: int = field(default_factory=lambda: _int("URNA_DAILY_GLOBAL_SATS", 500))
+    # aviso no Telegram (TELEGRAM_BOT_TOKEN/CHAT_ID) a cada voto na urna; 0 desliga
+    urna_avisar_votos: bool = field(default_factory=lambda: _bool("URNA_TELEGRAM_VOTOS", "1"))
     urna_reserva_pote: int = field(default_factory=lambda: _int(
         "URNA_POT_RESERVE_SATS", os.environ.get("POT_RESERVE_SATS") or 500))
     # painel /admin: sem token, a rota responde 404

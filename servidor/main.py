@@ -772,4 +772,4 @@ from . import urna  # noqa: E402
 votos_urna = urna.Votos(db)
 app.include_router(urna.criar_router(
     cfg=cfg, db=db, recompensas_de=lambda: recompensas, ip_de=ip_de, limitar=limitar, ler_json=ler_json,
-    Recusado=Recusado, versao=versao_app, votos=votos_urna))
+    Recusado=Recusado, versao=versao_app, votos=votos_urna, telegram_de=lambda: telegram))

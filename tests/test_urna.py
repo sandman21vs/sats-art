@@ -93,7 +93,7 @@ def test_banco_antigo_ganha_as_colunas_de_tipo(tmp_path):
 
 
 # ---------- rotas ----------
-def _app(ativa=True, com_recompensas=True, **kw):
+def _app(ativa=True, com_recompensas=True, telegram=None, **kw):
     r, coinos = montar(urna_ativa=ativa, ip_salt=SALT, **kw)
 
     class Recusado(Exception):
@@ -117,7 +117,7 @@ def _app(ativa=True, com_recompensas=True, **kw):
     app.include_router(urna.criar_router(
         cfg=r.cfg, db=r.db, recompensas_de=lambda: r if com_recompensas else None,
         ip_de=lambda req: req.client.host, limitar=limitar, ler_json=ler_json, Recusado=Recusado,
-        versao=lambda arq: "v1"))
+        versao=lambda arq: "v1", telegram_de=lambda: telegram))
     return app, r, coinos
 
 
@@ -204,3 +204,66 @@ def test_sem_recompensas_vota_sem_token():
             assert (await c.post("/api/urna/resgatar", json={})).status_code == 404
             assert (await c.get("/urna")).status_code == 200
     rodar(t())
+
+
+# ---------- aviso de voto no Telegram ----------
+class TelegramFalso:
+    def __init__(self):
+        self.enviadas = []
+
+    async def enviar(self, texto):
+        self.enviadas.append(texto)
+
+
+def _votar(app, ips_numeros):
+    async def t():
+        for ip, numero in ips_numeros:
+            async with _cliente(app, ip=ip) as c:
+                await c.post("/api/urna/votar", json={"numero": numero})
+        await asyncio.sleep(0)  # deixa os avisos em segundo plano saírem
+    rodar(t())
+
+
+def test_cada_voto_avisa_no_telegram_uma_vez():
+    tg = TelegramFalso()
+    app, _, _ = _app(telegram=tg)
+    _votar(app, [("200.0.0.1", "13"), ("200.0.0.2", "22"), ("200.0.0.2", "13")])  # o 3º é voto repetido
+    assert tg.enviadas == [
+        "🗳️ Novo voto na Urna dos Sats: '13\nApuração: '13 → 1 · '22 → 0 (1 votos)",
+        "🗳️ Novo voto na Urna dos Sats: '22\nApuração: '13 → 1 · '22 → 1 (2 votos)",
+    ]
+    assert "200.0.0" not in "".join(tg.enviadas)  # nada de IP no Telegram
+
+
+def test_enxurrada_de_votos_nao_vira_spam(monkeypatch):
+    monkeypatch.setattr(urna, "AVISOS_POR_HORA", 2)
+    tg = TelegramFalso()
+    app, _, _ = _app(telegram=tg)
+    _votar(app, [(f"200.0.1.{i}", "22") for i in range(5)])
+    assert len(tg.enviadas) == 2  # os outros 3 votos só foram contados
+
+
+def test_votos_calados_entram_no_proximo_aviso():
+    tg = TelegramFalso()
+    _, r, _ = _app()
+    aviso = urna.AvisoVotos(lambda: tg, urna.Votos(r.db), por_hora=1)
+
+    async def t():
+        aviso.votou("13")
+        aviso.votou("22")       # passou do teto: calado
+        aviso.votou("22")
+        assert aviso.calados == 2
+        aviso.lim = antiabuso.Limitador(1, 3600)  # a hora virou
+        aviso.votou("13")
+        await asyncio.sleep(0)
+    rodar(t())
+    assert len(tg.enviadas) == 2 and "+2 voto(s) sem aviso" in tg.enviadas[1] and aviso.calados == 0
+
+
+def test_aviso_desligado_por_config_ou_sem_bot():
+    tg = TelegramFalso()
+    app, _, _ = _app(telegram=tg, urna_avisar_votos=False)
+    _votar(app, [("200.0.2.1", "13")])
+    app2, _, _ = _app(telegram=None)
+    _votar(app2, [("200.0.2.2", "13")])
+    assert tg.enviadas == []
