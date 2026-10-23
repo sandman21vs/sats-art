@@ -12,7 +12,7 @@ from contextlib import suppress
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import antiabuso, eventos
+from . import antiabuso, eventos, urna
 from .coinos import CoinosErro
 
 COOKIE = "admin_sessao"
@@ -144,6 +144,18 @@ def criar_router(cfg, db, recompensas, ip_de, ler_json):
             "erros": sorted(({"erro": k, "n": v} for k, v in erros.items()), key=lambda e: -e["n"])[:15],
             "relatos": [{"quando": time.strftime("%Y-%m-%d %H:%M", time.gmtime(t)) + " UTC", "texto": x}
                         for t, x in db.ultimos_relatos(20)],
+            # urna de brincadeira (/urna): o painel vê o placar mesmo sem ter votado
+            "urna": urna.resumo_admin(db, cfg, dias) if cfg.urna_ativa else None,
         }, headers=SEM_CACHE)
+
+    @router.post("/api/admin/urna/zerar")
+    async def zerar_urna(req: Request):
+        """Apaga todos os votos da urna. Resgates e limites do dia continuam valendo."""
+        exigir_login(req)
+        if not cfg.urna_ativa:
+            raise HTTPException(404, "Not Found")
+        n = urna.Votos(db).zerar()
+        eventos.evento("urna_zerada", "warning", votos=n, ip=antiabuso.hash_ip(cfg.ip_salt, ip_de(req))[:12])
+        return JSONResponse({"ok": True, "apagados": n}, headers=SEM_CACHE)
 
     return router

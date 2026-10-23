@@ -53,11 +53,49 @@ class Votos:
         """(numero, token) ou None."""
         return self.db.um("SELECT numero, token FROM votos WHERE cota = ?", cota)
 
+    def zerar(self):
+        """Apaga todos os votos (painel admin). Devolve quantos foram apagados."""
+        return self.db.ex("DELETE FROM votos").rowcount
+
+    def por_dia(self, desde):
+        """{dia: (votos 13, votos 22)} a partir de `desde` (dias em UTC)."""
+        with self.db.trava:
+            linhas = self.db.con.execute(
+                "SELECT strftime('%Y-%m-%d', criado, 'unixepoch') AS d, numero, COUNT(*) FROM votos "
+                "GROUP BY d, numero HAVING d >= ?", (desde,)).fetchall()
+        dias = {}
+        for d, numero, n in linhas:
+            v13, v22 = dias.get(d, (0, 0))
+            dias[d] = (v13 + n, v22) if numero == "13" else (v13, v22 + n)
+        return dias
+
     def placar(self):
         with self.db.trava:
             linhas = dict(self.db.con.execute("SELECT numero, COUNT(*) FROM votos GROUP BY numero").fetchall())
         p = {n: linhas.get(n, 0) for n in NUMEROS}
         return {**p, "total": sum(p.values())}
+
+
+def resumo_admin(db, cfg, dias):
+    """Números da urna para o painel /admin: placar completo, votos e sats por dia, gasto de hoje."""
+    votos = Votos(db)
+    por_dia = votos.por_dia(dias[0])
+    with db.trava:
+        pagos = {d: (sats, n) for d, sats, n in db.con.execute(
+            "SELECT dia, COALESCE(SUM(sats), 0), COUNT(*) FROM resgates WHERE tipo = 'urna' AND status = 'pago' "
+            "AND dia >= ? GROUP BY dia", (dias[0],)).fetchall()}
+    gasto_hoje = db.um(f"SELECT COALESCE(SUM(sats + fee), 0) FROM resgates WHERE dia = ? AND tipo = 'urna' "
+                       f"AND status IN {CONTA}", hoje())[0]
+    return {
+        "ativa": cfg.urna_ativa,
+        "placar": votos.placar(),
+        "limite_dia": cfg.urna_limite_dia_global,
+        "gasto_hoje": gasto_hoje,
+        "total_sats": sum(v[0] for v in pagos.values()),
+        "total_resgates": sum(v[1] for v in pagos.values()),
+        "dias": [{"dia": d, "votos": sum(por_dia.get(d, (0, 0))), "v13": por_dia.get(d, (0, 0))[0],
+                  "v22": por_dia.get(d, (0, 0))[1], "sats": pagos.get(d, (0, 0))[0]} for d in dias],
+    }
 
 
 def contexto_relato(db, votos, cota, cfg, recompensas):

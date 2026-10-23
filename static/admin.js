@@ -60,6 +60,7 @@ async function carregar() {
   $("totalResgates").textContent = fmt.format(d.total_resgates);
   $("totalSats").textContent = fmt.format(d.total_sats);
   $("pausa").textContent = d.pausadas ? "Recompensas pausadas hoje" : "";
+  urna(d.urna);
   barras($("gArtes"), d.dias, "artes", "");
   barras($("gSats"), d.dias, "sats", "sats");
   lista($("erros"), d.erros, "Nenhum erro nas últimas 24 h.", (e) => {
@@ -83,6 +84,38 @@ async function carregar() {
     return el;
   });
 }
+
+// ---------- urna dos sats (/urna) ----------
+function urna(u) {
+  $("secaoUrna").hidden = !u;
+  if (!u) return;
+  const p = u.placar, total = p.total || 0;
+  for (const n of ["13", "22"]) {
+    const pct = total ? (100 * p[n]) / total : 0;
+    $("uBarra" + n).style.width = pct + "%";
+    $("uPct" + n).replaceChildren(pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "% ");
+    const s = document.createElement("small");
+    s.textContent = `(${fmt.format(p[n])})`;
+    $("uPct" + n).append(s);
+  }
+  $("uVotos").textContent = fmt.format(total);
+  $("uHoje").textContent = `${fmt.format(u.gasto_hoje)} / ${fmt.format(u.limite_dia)}`;
+  $("uMedidor").style.width = Math.min(100, (100 * u.gasto_hoje) / (u.limite_dia || 1)) + "%";
+  $("uHojeNota").textContent = u.gasto_hoje >= u.limite_dia ? "limite do dia atingido" : "gasto do limite diário (URNA_DAILY_GLOBAL_SATS)";
+  $("uSats").textContent = fmt.format(u.total_sats);
+  $("uResgates").textContent = `${fmt.format(u.total_resgates)} resgate(s)`;
+  barras($("gVotos"), u.dias, "votos", "votos");
+}
+
+$("zerarUrna").addEventListener("click", async () => {
+  if (!confirm("Apagar TODOS os votos da urna? A apuração volta para zero e todo mundo pode votar de novo.")) return;
+  const r = await fetch("/api/admin/urna/zerar", {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
+  });
+  const j = await r.json().catch(() => ({}));
+  $("uMsg").textContent = r.ok ? `${fmt.format(j.apagados)} voto(s) apagado(s).` : j.erro || "Não consegui zerar.";
+  carregar();
+});
 
 $("formEntrar").addEventListener("submit", async (ev) => {
   ev.preventDefault();

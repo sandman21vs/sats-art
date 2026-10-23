@@ -49,6 +49,23 @@
   .relato { border-top: 1px solid var(--line); padding: 8px 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; }
   .relato:first-of-type { border-top: 0; }
   @media (max-width: 520px) { .barras .v { display: none; } }
+  /* urna */
+  .urna-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .urna-topo h2 { margin: 0; }
+  .placar { display: grid; gap: 10px; margin-bottom: 14px; }
+  .placar .linha { display: grid; grid-template-columns: 44px 1fr 110px; align-items: center; gap: 10px; }
+  .placar .num { font-size: 20px; font-weight: 800; }
+  .placar .trilho { height: 14px; border-radius: 7px; background: #262221; overflow: hidden; }
+  .placar .trilho i { display: block; height: 100%; border-radius: 7px; }
+  .placar .c13 i { background: var(--accent); }
+  .placar .c22 i { background: #c9c1b8; }
+  .placar .pct { text-align: right; font-variant-numeric: tabular-nums; }
+  .placar .pct small { color: var(--muted); }
+  .barras .b.votos { background: #c9c1b8; }
+  .medidor { height: 6px; border-radius: 3px; background: #262221; overflow: hidden; margin-top: 6px; }
+  .medidor i { display: block; height: 100%; background: var(--accent); }
+  button.perigo { border-color: #6b2018; color: #ffb4a6; }
+  button.perigo:hover { border-color: var(--erro); }
 </style>
 </head>
 <body>
@@ -79,8 +96,31 @@
       <div class="cartao"><h2>Sats pagos (14 dias)</h2><div id="totalSats" class="numero">–</div></div>
     </div>
 
+    <section id="secaoUrna" hidden>
+      <div class="cartao">
+        <div class="urna-topo">
+          <h2>Urna dos Sats</h2>
+          <div class="links">
+            <a class="botao" href="/urna" target="_blank" rel="noopener">Abrir a urna</a>
+            <button class="perigo" id="zerarUrna" type="button">Zerar apuração</button>
+          </div>
+        </div>
+        <div class="placar">
+          <div class="linha c13"><span class="num">'13</span><div class="trilho"><i id="uBarra13"></i></div><span class="pct" id="uPct13">–</span></div>
+          <div class="linha c22"><span class="num">'22</span><div class="trilho"><i id="uBarra22"></i></div><span class="pct" id="uPct22">–</span></div>
+        </div>
+        <div class="grade" style="margin-bottom:0">
+          <div><h2>Votos</h2><div id="uVotos" class="numero">–</div></div>
+          <div><h2>Sats hoje</h2><div id="uHoje" class="numero">–</div><div class="medidor"><i id="uMedidor"></i></div><div id="uHojeNota" class="muted"></div></div>
+          <div><h2>Sats pagos (14 dias)</h2><div id="uSats" class="numero">–</div><div id="uResgates" class="muted"></div></div>
+        </div>
+        <div id="uMsg" class="muted" style="margin-top:8px"></div>
+      </div>
+      <div class="cartao"><h2>Votos na urna por dia</h2><div id="gVotos"></div></div>
+    </section>
+
     <div class="cartao"><h2>Artes criadas por dia</h2><div id="gArtes"></div></div>
-    <div class="cartao"><h2>Sats pagos por dia</h2><div id="gSats"></div></div>
+    <div class="cartao"><h2>Sats pagos por dia (arte + urna)</h2><div id="gSats"></div></div>
     <div class="cartao"><h2>Erros mais comuns (24 h)</h2><div id="erros"></div></div>
     <div class="cartao"><h2>Últimos relatos</h2><div id="relatos"></div></div>
     <div class="muted">Dias em UTC. Contagem de artes começa quando o painel foi ligado.</div>

@@ -208,3 +208,33 @@ def test_alerta_falha_do_telegram_nao_marca_como_enviado(tmp_path):
         await a.verificar(100)
         assert len(t.enviadas) == 1
     rodar(t_())
+
+
+# ---------- urna (/urna) no painel ----------
+def test_urna_no_painel_mostra_placar_e_zera(main, monkeypatch):
+    from servidor import urna
+    app = _app(main, monkeypatch)
+    hoje = time.strftime("%Y-%m-%d", time.gmtime())
+    votos = urna.Votos(main.db)
+    for cota, numero in (("a", "13"), ("b", "22"), ("c", "22")):
+        votos.votar(cota, numero)
+    main.db.ex("INSERT INTO resgates(dia, endereco, ip_hash, sats, status, criado, tipo) "
+               "VALUES (?, 'b@coinos.io', 'b', 22, 'pago', ?, 'urna')", hoje, time.time())
+
+    async def t():
+        async with _cliente(app) as c:
+            await c.post("/api/admin/login", json={"token": TOKEN})
+            monkeypatch.setattr(main.cfg, "urna_ativa", False)
+            assert (await c.get("/api/admin/resumo")).json()["urna"] is None
+            assert (await c.post("/api/admin/urna/zerar", json={})).status_code == 404
+            monkeypatch.setattr(main.cfg, "urna_ativa", True)
+            u = (await c.get("/api/admin/resumo")).json()["urna"]
+            assert u["placar"] == {"13": 1, "22": 2, "total": 3}
+            assert u["gasto_hoje"] == 22 and u["total_sats"] == 22 and u["total_resgates"] == 1
+            assert u["dias"][-1] == {"dia": hoje, "votos": 3, "v13": 1, "v22": 2, "sats": 22}
+            r = await c.post("/api/admin/urna/zerar", json={})
+            assert r.json() == {"ok": True, "apagados": 3}
+            assert (await c.get("/api/admin/resumo")).json()["urna"]["placar"]["total"] == 0
+        async with _cliente(app, ip="200.1.1.1") as c:  # sem login não zera
+            assert (await c.post("/api/admin/urna/zerar", json={})).status_code == 401
+    rodar(t())
