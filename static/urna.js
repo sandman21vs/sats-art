@@ -5,7 +5,12 @@ const $ = (id) => document.getElementById(id);
 const postJSON = (url, corpo) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Idioma": "pt" }, body: JSON.stringify(corpo) });
 const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
 const lembrar = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
-const mensagem = (el, texto, tipo = "") => { el.className = "msg " + tipo; el.textContent = texto; };
+// o último erro mostrado vai junto, se a pessoa reportar um problema
+let ultimoErro = "";
+const mensagem = (el, texto, tipo = "") => {
+  el.className = "msg " + tipo; el.textContent = texto;
+  if (tipo === "erro" && texto) ultimoErro = texto;
+};
 const NUMEROS = ["13", "22"];
 
 let digitado = "", branco = false, votou = false, enviando = false, novo = -1, meuNumero = "";
@@ -119,6 +124,7 @@ async function confirma() {
     efeitoTela("flash");
     mostrarVoto(j);
   } catch (e) {
+    ultimoErro = e.message;
     alert(e.message);
   } finally {
     enviando = false; desenhar();
@@ -217,6 +223,7 @@ async function infos() {
       $("bountyRepo").hidden = false;
       $("bountyRepo").querySelector("a").href = i.repo_url.replace(/\/$/, "") + "/blob/main/SECURITY.md";
     }
+    configurarReport(i.report_tipos_urna || []);
     if (i.doacao_endereco) {
       $("qrEndereco").innerHTML = i.doacao_qr || "";  // SVG gerado pelo próprio servidor
       $("txtEndereco").textContent = i.doacao_endereco;
@@ -226,6 +233,54 @@ async function infos() {
     }
   } catch { /* os números do topo ficam com "…" */ }
 }
+
+// ---------- reportar problema (chega no Telegram de quem cuida do site) ----------
+function configurarReport(tipos) {
+  $("abrirReport").hidden = !tipos.length;
+  const box = $("reportTipos");
+  box.replaceChildren();
+  for (const [chave, rotulo] of tipos) {
+    const b = el("button", "", rotulo);
+    b.dataset.tipo = chave;
+    b.addEventListener("click", () => b.classList.toggle("on"));
+    box.append(b);
+  }
+}
+function abrirReport() {
+  $("reportErro").hidden = !ultimoErro;
+  $("reportErro").textContent = ultimoErro ? `O último erro na tela vai junto: "${ultimoErro}"` : "";
+  mensagem($("msgReport"), "");
+  $("enviarReport").disabled = false;
+  $("modalReport").hidden = false;
+  $("reportTexto").focus();
+}
+const fecharReport = () => { $("modalReport").hidden = true; };
+$("abrirReport").addEventListener("click", abrirReport);
+$("abrirReport2").addEventListener("click", abrirReport);
+$("fecharReport").addEventListener("click", fecharReport);
+$("modalReport").addEventListener("click", (e) => { if (e.target === $("modalReport")) fecharReport(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("modalReport").hidden) fecharReport(); });
+$("enviarReport").addEventListener("click", async () => {
+  const tipos = [...$("reportTipos").querySelectorAll("button.on")].map((b) => b.dataset.tipo);
+  const texto = $("reportTexto").value.trim(), msg = $("msgReport");
+  if (!tipos.length && !texto) { mensagem(msg, "Marque o que aconteceu ou escreva uma mensagem.", "erro"); return; }
+  $("enviarReport").disabled = true;
+  mensagem(msg, "Enviando…");
+  try {
+    const r = await postJSON("/api/reportar", {
+      pagina: "urna", tipos, mensagem: texto, contato: $("reportContato").value.trim(), erro: ultimoErro,
+      tela: `${innerWidth}x${innerHeight}`,
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro || "Não consegui enviar agora.");
+    $("reportTexto").value = "";
+    $("reportTipos").querySelectorAll("button.on").forEach((x) => x.classList.remove("on"));
+    msg.className = "msg sucesso"; msg.textContent = "Recebido! Obrigado por avisar.";
+  } catch (e) {
+    msg.className = "msg erro"; msg.textContent = e.message;
+    $("enviarReport").disabled = false;
+  }
+});
 
 $("irDoar").addEventListener("click", () => $("doar").scrollIntoView({ behavior: "smooth", block: "center" }));
 $("copiarEndereco").addEventListener("click", async () => {
@@ -274,6 +329,7 @@ async function receber() {
   } catch (e) {
     mensagem(msg, e.message, "erro");
     $("receber").disabled = false;
+    $("avisarErro").hidden = $("abrirReport").hidden;
   }
 }
 

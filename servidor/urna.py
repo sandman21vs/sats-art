@@ -60,9 +60,27 @@ class Votos:
         return {**p, "total": sum(p.values())}
 
 
-def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado, versao):
+def contexto_relato(db, votos, cota, cfg, recompensas):
+    """Linhas sobre a urna que vão junto num relato do botão "Reportar problema" (Telegram)."""
+    voto = votos.voto_de(cota)
+    if not voto:
+        return ["Urna: ainda não votou"]
+    numero, token = voto
+    linhas = [f"Urna: votou '{numero}"]
+    if recompensas:
+        resgatou = db.contar_dia(hoje(), "ip_hash", cota, "urna")
+        if resgatou:
+            linhas.append(f"Resgate da urna hoje: sim ({numero} sats)")
+        elif token and db.token_valido(token, cfg.token_validade_s, cota, "urna"):
+            linhas.append("Resgate da urna: ainda não resgatou (token válido)")
+        else:
+            linhas.append("Resgate da urna: token vencido ou já usado")
+    return linhas
+
+
+def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado, versao, votos=None):
     router = APIRouter()
-    votos = Votos(db)
+    votos = votos or Votos(db)
     lim_estado = antiabuso.Limitador(60, 60)
     lim_voto = antiabuso.Limitador(10, 600)
     lim_resgate = antiabuso.Limitador(10, 600)

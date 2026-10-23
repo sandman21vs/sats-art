@@ -411,6 +411,7 @@ async def info(req: Request):
         "doacao_qr": qr_svg(f"lightning:{cfg.doacao_endereco}") if cfg.doacao_endereco else None,
         "pote": None,
         "report_tipos": list(TIPOS_REPORT.items()) if telegram else [],
+        "report_tipos_urna": list(TIPOS_REPORT_URNA.items()) if telegram and cfg.urna_ativa else [],
         "animacao": AnimacaoRender(render, FFMPEG).tipos(),
     }
     if recompensas:
@@ -668,6 +669,11 @@ TIPOS_REPORT = {
     "lento": "Site lento ou fora do ar",
     "outro": "Outra coisa",
 }
+# opções do botão na urna (/urna): as que valem lá, mais uma própria
+TIPOS_REPORT_URNA = {
+    "urna_voto": "A urna não registrou meu voto",
+    **{k: TIPOS_REPORT[k] for k in ("sats_nao_chegaram", "erro_resgate", "lento", "outro")},
+}
 MAX_REPORT_TEXTO, MAX_REPORT_CONTATO, MAX_REPORT_ERRO = 1000, 120, 300
 _CONTROLE = re.compile(r"[\x00-\x09\x0b-\x1f\x7f​-‏‪-‮⁦-⁩]")
 
@@ -691,9 +697,11 @@ async def reportar(req: Request):
     ip = ip_de(req)
     limitar(lim_report, ip, "Você já mandou alguns relatos agora. Espere uns minutos.")
     p = await ler_json(req)
+    na_urna = p.get("pagina") == "urna" and cfg.urna_ativa
+    catalogo = TIPOS_REPORT_URNA if na_urna else TIPOS_REPORT
     tipos = p.get("tipos") or []
-    if (not isinstance(tipos, list) or len(tipos) > len(TIPOS_REPORT)
-            or any(not isinstance(t, str) or t not in TIPOS_REPORT for t in tipos)):
+    if (not isinstance(tipos, list) or len(tipos) > len(catalogo)
+            or any(not isinstance(t, str) or t not in catalogo for t in tipos)):
         raise Recusado(400, "Pedido inválido.")
     tipos = list(dict.fromkeys(tipos))
     texto = _texto_report(p.get("mensagem"), MAX_REPORT_TEXTO)
@@ -705,9 +713,9 @@ async def reportar(req: Request):
     limitar(lim_report_global, "todos", "Muitos relatos agora. Tente de novo mais tarde.")
 
     pessoa = antiabuso.hash_ip(cfg.ip_salt, ip)[:12]  # o mesmo hash dos eventos do log
-    partes = ["🐞 Relato de problema · Rede de Nós"]
+    partes = ["🐞 Relato de problema · " + ("Urna dos Sats" if na_urna else "Rede de Nós")]
     if tipos:
-        partes.append("\n".join("• " + TIPOS_REPORT[t] for t in tipos))
+        partes.append("\n".join("• " + catalogo[t] for t in tipos))
     if texto:
         partes.append("💬 " + texto)
     if contato:
@@ -715,15 +723,22 @@ async def reportar(req: Request):
     if ultimo_erro:
         partes.append("⚠️ Último erro na tela: " + ultimo_erro)
     contexto = [f"Pessoa (hash do IP nos logs): {pessoa}"]
-    if recompensas:
-        dia = recompensas.meu_dia("", antiabuso.hash_cota(cfg.ip_salt, ip))
+    cota = antiabuso.hash_cota(cfg.ip_salt, ip)
+    if na_urna:
+        contexto.extend(urna.contexto_relato(db, votos_urna, cota, cfg, recompensas))
+    elif recompensas:
+        dia = recompensas.meu_dia("", cota)
         contexto.append(f"Hoje: {dia['feitos']} resgate(s), {dia['ganho_hoje']} de {cfg.limite_dia_usuario} sats")
+    if recompensas:
         with suppress(CoinosErro):
             contexto.append(f"Pote: {await recompensas.saldo()} sats (reserva {cfg.reserva_pote})")
-    formato = "em pé" if p.get("retrato") is True else "deitada"
-    if isinstance(p.get("formato"), str) and p["formato"] in FORMATOS:
-        formato = p["formato"]
-    contexto.append(f"Arte: {formato}" + (f" · tela {tela}" if tela else ""))
+    if na_urna:
+        contexto.append("Página: /urna" + (f" · tela {tela}" if tela else ""))
+    else:
+        formato = "em pé" if p.get("retrato") is True else "deitada"
+        if isinstance(p.get("formato"), str) and p["formato"] in FORMATOS:
+            formato = p["formato"]
+        contexto.append(f"Arte: {formato}" + (f" · tela {tela}" if tela else ""))
     contexto.append(f"Idioma da página: {_idioma(req)}")
     contexto.append("Navegador: " + _texto_report(req.headers.get("user-agent"), 160, linhas=False))
     contexto.append(f"Versão do app: {versao_app()} · {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC")
@@ -736,7 +751,8 @@ async def reportar(req: Request):
         evento("report_falhou", "error", motivo=str(e), ip=pessoa)
         raise Recusado(502, "Não consegui enviar agora. Tente de novo em alguns minutos.") from e
     # o texto do relato vai só para o Telegram, nunca para o log (pode ter endereço, e-mail...)
-    evento("report_enviado", tipos=tipos, caracteres=len(texto), contato=bool(contato), ip=pessoa)
+    evento("report_enviado", tipos=tipos, caracteres=len(texto), contato=bool(contato), ip=pessoa,
+           pagina="urna" if na_urna else "arte")
     return {"ok": True}
 
 
@@ -753,6 +769,7 @@ app.include_router(galeria.criar_router(
 # ---------- urna de brincadeira (/urna; 404 sem URNA_ATIVA=1): veja servidor/urna.py ----------
 from . import urna  # noqa: E402
 
+votos_urna = urna.Votos(db)
 app.include_router(urna.criar_router(
     cfg=cfg, db=db, recompensas_de=lambda: recompensas, ip_de=ip_de, limitar=limitar, ler_json=ler_json,
-    Recusado=Recusado, versao=versao_app))
+    Recusado=Recusado, versao=versao_app, votos=votos_urna))

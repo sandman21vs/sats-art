@@ -159,3 +159,26 @@ def test_erros_do_cliente_nunca_carregam_o_token(handler):
     with pytest.raises(tg.TelegramErro) as e:
         asyncio.run(_cliente(handler).enviar("oi"))
     assert TOKEN not in str(e.value) and e.value.__cause__ is None
+
+
+# ---------- relato vindo da urna (/urna) ----------
+def test_relato_da_urna_leva_o_contexto_da_urna(main, monkeypatch):
+    monkeypatch.setattr(main.cfg, "urna_ativa", True)
+    assert ["urna_voto", "A urna não registrou meu voto"] in _info(main)["report_tipos_urna"]
+    main.votos_urna.votar(antiabuso.hash_cota(main.cfg.ip_salt, "189.6.10.20"), "13")
+    r, = _post(main, {"pagina": "urna", "tipos": ["urna_voto", "outro"], "mensagem": "Votei e sumiu.",
+                      "tela": "1440x900", "retrato": True})
+    assert r.status_code == 200
+    texto, = main.telegram.enviadas
+    for trecho in ("Urna dos Sats", "A urna não registrou meu voto", "Outra coisa", "Votei e sumiu.",
+                   "Urna: votou '13", "Página: /urna · tela 1440x900"):
+        assert trecho in texto
+    assert "Arte:" not in texto and "Rede de Nós" not in texto
+
+
+def test_tipo_da_urna_nao_vale_fora_dela(main, monkeypatch):
+    # na página da arte, ou com a urna desligada, só valem as opções da arte
+    assert _post(main, {"tipos": ["urna_voto"]})[0].status_code == 400
+    assert _post(main, {"pagina": "urna", "tipos": ["urna_voto"]}, ip="200.1.1.1")[0].status_code == 400
+    assert _info(main)["report_tipos_urna"] == []
+    assert main.telegram.enviadas == []

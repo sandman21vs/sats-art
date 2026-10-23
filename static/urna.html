@@ -191,6 +191,25 @@
   .copia code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
   .copia button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 7px; padding: 5px 10px; font-size: 12px; }
 
+  /* ----- reportar problema (vai para o Telegram de quem cuida do site) ----- */
+  .modal { position: fixed; inset: 0; background: #000b; display: grid; place-items: center; padding: 16px; z-index: 20; }
+  .modal .caixa { width: min(460px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 14px; padding: 18px; position: relative; }
+  .modal h3 { margin: 0 0 4px; font-size: 17px; }
+  .modal .fechar { position: absolute; top: 10px; right: 10px; background: none; border: 0; color: var(--muted); font-size: 18px; }
+  .modal p { color: var(--muted); margin: 0 0 12px; }
+  .tipos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .tipos button { border: 1px solid var(--line); background: #1f1c1b; color: var(--text); border-radius: 999px;
+    padding: 7px 12px; font-size: 12.5px; }
+  .tipos button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-2); }
+  .modal textarea, .modal input { width: 100%; font: inherit; font-size: 13px; color: var(--text); background: #1f1c1b;
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; margin-bottom: 8px; }
+  .modal textarea { resize: vertical; }
+  .modal .erro-junto { font-size: 12px; color: var(--muted); margin-bottom: 8px; overflow-wrap: anywhere; }
+  .modal .primario { width: 100%; }
+  .link-relato { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline;
+    text-underline-offset: 2px; font-size: 13px; }
+
   .aviso-legal { color: var(--muted); font-size: 12px; padding-bottom: 30px; border-top: 1px solid var(--line); padding-top: 14px; }
 
   .cai { position: fixed; top: -30px; pointer-events: none; animation: cair 2.6s linear forwards; z-index: 9; }
@@ -213,6 +232,7 @@
     </div>
     <nav class="nav">
       <a class="pilula pirata" href="#bounty">🏴‍☠️ Tente roubar o pote</a>
+      <button class="pilula" id="abrirReport" hidden>🛟 Reportar problema</button>
       <a class="pilula" href="/">← Rede de Nós</a>
     </nav>
   </header>
@@ -280,6 +300,7 @@
           <button class="primario" id="receber">Receber</button>
         </div>
         <div class="msg" id="msgResgate"></div>
+        <div class="msg" id="avisarErro" hidden><button class="link-relato" id="abrirReport2">Algo deu errado? Avise</button></div>
       </div>
       <div class="card" id="cardSemSats" hidden>
         <h2>Voto registrado</h2>
@@ -352,6 +373,20 @@
     resultado não representa ninguém. Os sats saem do pote da Rede de Nós enquanto houver saldo. No dia
     da eleição, vote de verdade na sua seção.
   </p>
+</div>
+
+<div class="modal" id="modalReport" hidden role="dialog" aria-modal="true" aria-labelledby="tituloReport">
+  <div class="caixa">
+    <button class="fechar" id="fecharReport" aria-label="Fechar">✕</button>
+    <h3 id="tituloReport">🛟 Reportar um problema</h3>
+    <p>Conte o que aconteceu. A mensagem vai direto para quem cuida do site.</p>
+    <div class="tipos" id="reportTipos"></div>
+    <textarea id="reportTexto" rows="4" maxlength="1000" placeholder="Detalhes (opcional se você marcou acima)"></textarea>
+    <input type="text" id="reportContato" maxlength="120" autocomplete="off" placeholder="Contato para resposta (opcional): @telegram, e-mail…">
+    <div class="erro-junto" id="reportErro" hidden></div>
+    <button class="primario" id="enviarReport">Enviar relato</button>
+    <div class="msg" id="msgReport"></div>
+  </div>
 </div>
 
 <script src="/urna.js"></script>
