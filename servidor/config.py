@@ -65,6 +65,10 @@ class Config:
     # aviso no Telegram quando o pote cai abaixo disso (0 = desligado) e intervalo mínimo entre avisos
     alerta_pote_sats: int = field(default_factory=lambda: _int("ALERTA_POTE_SATS", 500))
     alerta_pote_horas: int = field(default_factory=lambda: _int("ALERTA_POTE_HORAS", 6))
+    # urna de brincadeira (/urna): vote '13 ou '22 e receba esse tanto de sats. Desligada por
+    # padrão; quando ligada, tem limite global de sats por dia próprio (fora do DAILY_GLOBAL_SATS)
+    urna_ativa: bool = field(default_factory=lambda: _bool("URNA_ATIVA"))
+    urna_limite_dia_global: int = field(default_factory=lambda: _int("URNA_DAILY_GLOBAL_SATS", 500))
     # painel /admin: sem token, a rota responde 404
     admin_token: str = field(default_factory=lambda: os.environ.get("ADMIN_TOKEN", "").strip())
 
@@ -105,3 +109,5 @@ class Config:
             raise RuntimeError("REWARD_SCHEDULE precisa de valores positivos, ex.: 10,11")
         if self.modo_local:
             raise RuntimeError("LOCAL_MODE é só para o app no computador, sem recompensas.")
+        if self.urna_ativa and self.urna_limite_dia_global <= 0:
+            raise RuntimeError("URNA_DAILY_GLOBAL_SATS precisa ser positivo (ex.: 500) com URNA_ATIVA=1.")

@@ -749,3 +749,10 @@ from . import galeria  # noqa: E402
 app.include_router(galeria.criar_router(
     cfg=cfg, render=render, ip_de=ip_de, limitar=limitar, ler_json=ler_json, Recusado=Recusado,
     limites_render=limites_render, pagina=pagina_com_versao, versao=versao_app))
+
+# ---------- urna de brincadeira (/urna; 404 sem URNA_ATIVA=1): veja servidor/urna.py ----------
+from . import urna  # noqa: E402
+
+app.include_router(urna.criar_router(
+    cfg=cfg, db=db, recompensas_de=lambda: recompensas, ip_de=ip_de, limitar=limitar, ler_json=ler_json,
+    Recusado=Recusado, versao=versao_app))

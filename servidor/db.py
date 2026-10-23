@@ -12,13 +12,16 @@ import time
 ESQUEMA = """
 CREATE TABLE IF NOT EXISTS tokens (
     token TEXT PRIMARY KEY, criado REAL NOT NULL, usado INTEGER NOT NULL DEFAULT 0,
-    dono TEXT   -- hash da cota de quem exportou: só essa "pessoa" pode resgatar
+    dono TEXT,  -- hash da cota de quem exportou: só essa "pessoa" pode resgatar
+    tipo TEXT NOT NULL DEFAULT 'arte',  -- arte | urna: cada tipo tem limites próprios
+    sats INTEGER                        -- valor fixo do resgate (urna); NULL = segue REWARD_SCHEDULE
 );
 CREATE TABLE IF NOT EXISTS resgates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dia TEXT NOT NULL, endereco TEXT NOT NULL, ip_hash TEXT NOT NULL,
     sats INTEGER NOT NULL, status TEXT NOT NULL,   -- pendente | pago | erro | falhou (não enviado)
-    ref TEXT, fee INTEGER DEFAULT 0, erro TEXT, criado REAL NOT NULL, fechado REAL
+    ref TEXT, fee INTEGER DEFAULT 0, erro TEXT, criado REAL NOT NULL, fechado REAL,
+    tipo TEXT NOT NULL DEFAULT 'arte'
 );
 CREATE INDEX IF NOT EXISTS resgates_dia ON resgates(dia);
 CREATE INDEX IF NOT EXISTS resgates_status ON resgates(status);
@@ -67,8 +70,14 @@ class DB:
         colunas = {r[1] for r in self.con.execute("PRAGMA table_info(resgates)")}
         if "fechado" not in colunas:  # bancos criados antes desta versão
             self.con.execute("ALTER TABLE resgates ADD COLUMN fechado REAL")
-        if "dono" not in {r[1] for r in self.con.execute("PRAGMA table_info(tokens)")}:
+        if "tipo" not in colunas:
+            self.con.execute("ALTER TABLE resgates ADD COLUMN tipo TEXT NOT NULL DEFAULT 'arte'")
+        colunas = {r[1] for r in self.con.execute("PRAGMA table_info(tokens)")}
+        if "dono" not in colunas:
             self.con.execute("ALTER TABLE tokens ADD COLUMN dono TEXT")
+        if "tipo" not in colunas:
+            self.con.execute("ALTER TABLE tokens ADD COLUMN tipo TEXT NOT NULL DEFAULT 'arte'")
+            self.con.execute("ALTER TABLE tokens ADD COLUMN sats INTEGER")
         self.trava = threading.Lock()
 
     def ex(self, sql, *args):
@@ -80,22 +89,29 @@ class DB:
             return self.con.execute(sql, args).fetchone()
 
     # ---------- tokens ----------
-    def criar_token(self, token, dono=None):
+    def criar_token(self, token, dono=None, tipo="arte", sats=None):
         """`dono` = hash da cota de quem exportou. None só em testes (token sem vínculo)."""
-        self.ex("INSERT INTO tokens(token, criado, dono) VALUES (?, ?, ?)", token, time.time(), dono)
+        self.ex("INSERT INTO tokens(token, criado, dono, tipo, sats) VALUES (?, ?, ?, ?, ?)",
+                token, time.time(), dono, tipo, sats)
 
-    def token_valido(self, token, validade_s, dono=None):
+    def token_valido(self, token, validade_s, dono=None, tipo="arte"):
         return self.um("SELECT 1 FROM tokens WHERE token = ? AND usado = 0 AND criado > ? "
-                       "AND (dono IS NULL OR dono = ?)", token, time.time() - validade_s, dono) is not None
+                       "AND (dono IS NULL OR dono = ?) AND tipo = ?",
+                       token, time.time() - validade_s, dono, tipo) is not None
+
+    def sats_do_token(self, token):
+        r = self.um("SELECT sats FROM tokens WHERE token = ?", token)
+        return r[0] if r else None
 
     # ---------- resgates ----------
     def soma_dia(self, dia):
         """Total gasto no dia, incluindo taxas."""
         return self.um(f"SELECT COALESCE(SUM(sats + fee), 0) FROM resgates WHERE dia = ? AND {_EM}", dia)[0]
 
-    def contar_dia(self, dia, coluna, valor):
+    def contar_dia(self, dia, coluna, valor, tipo="arte"):
         assert coluna in ("endereco", "ip_hash")
-        return self.um(f"SELECT COUNT(*) FROM resgates WHERE dia = ? AND {_EM} AND {coluna} = ?", dia, valor)[0]
+        return self.um(f"SELECT COUNT(*) FROM resgates WHERE dia = ? AND {_EM} AND {coluna} = ? AND tipo = ?",
+                       dia, valor, tipo)[0]
 
     def fechar_pendentes_orfaos(self, idade_s=600):
         """Pendente velho = processo caiu no meio do pagamento: vira 'erro' (conferir na Coinos)."""
@@ -139,8 +155,12 @@ class DB:
                        dia, ERRO_DESTINO + "%")[0]
 
     def reservar_resgate(self, *, token, validade_s, dia, endereco, ip_hash, seq,
-                         limite_global, taxa_max, intervalo_min_s, saldo, saldo_em, reserva_pote):
+                         limite_global, taxa_max, intervalo_min_s, saldo, saldo_em, reserva_pote,
+                         tipo="arte"):
         """Confere tudo e grava o resgate como 'pendente', atomicamente.
+
+        `tipo` separa os limites por pessoa e o limite global do dia (arte e urna têm os seus);
+        o intervalo entre resgates e o pote valem para todos os tipos juntos.
 
         `saldo` é o saldo da carteira lido no instante `saldo_em`; o que foi pago
         depois dessa leitura (ou ainda está em voo) é descontado aqui.
@@ -152,18 +172,20 @@ class DB:
             c.execute("BEGIN IMMEDIATE")
             try:
                 um = lambda sql, *a: c.execute(sql, a).fetchone()[0]  # noqa: E731
-                feitos = max(um(f"SELECT COUNT(*) FROM resgates WHERE dia = ? AND {_EM} AND endereco = ?",
-                                dia, endereco),
-                             um(f"SELECT COUNT(*) FROM resgates WHERE dia = ? AND {_EM} AND ip_hash = ?",
-                                dia, ip_hash))
+                feitos = max(um(f"SELECT COUNT(*) FROM resgates WHERE dia = ? AND {_EM} AND endereco = ? "
+                                "AND tipo = ?", dia, endereco, tipo),
+                             um(f"SELECT COUNT(*) FROM resgates WHERE dia = ? AND {_EM} AND ip_hash = ? "
+                                "AND tipo = ?", dia, ip_hash, tipo))
                 if feitos >= len(seq):
                     raise Recusa("limite_usuario")
                 sats = seq[feitos]
                 ultimo = um(f"SELECT COALESCE(MAX(criado), 0) FROM resgates WHERE ip_hash = ? AND {_EM}", ip_hash)
                 if agora - ultimo < intervalo_min_s:
                     raise Recusa("intervalo")
-                gasto = um(f"SELECT COALESCE(SUM(sats + fee), 0) FROM resgates WHERE dia = ? AND {_EM}", dia)
-                pendentes = um("SELECT COUNT(*) FROM resgates WHERE dia = ? AND status = 'pendente'", dia)
+                gasto = um(f"SELECT COALESCE(SUM(sats + fee), 0) FROM resgates WHERE dia = ? AND {_EM} "
+                           "AND tipo = ?", dia, tipo)
+                pendentes = um("SELECT COUNT(*) FROM resgates WHERE dia = ? AND status = 'pendente' AND tipo = ?",
+                               dia, tipo)
                 if gasto + (pendentes + 1) * taxa_max + sats > limite_global:
                     raise Recusa("limite_global")
                 # pote: TODOS os pendentes (inclusive de dias anteriores) e a taxa de cada um
@@ -175,12 +197,12 @@ class DB:
                     raise Recusa("pote")
                 # o token só vale para quem exportou (dono = hash da cota do IP de quem exportou)
                 if c.execute("UPDATE tokens SET usado = 1 WHERE token = ? AND usado = 0 AND criado > ? "
-                             "AND (dono IS NULL OR dono = ?)",
-                             (token, agora - validade_s, ip_hash)).rowcount != 1:
+                             "AND (dono IS NULL OR dono = ?) AND tipo = ?",
+                             (token, agora - validade_s, ip_hash, tipo)).rowcount != 1:
                     raise Recusa("token")
-                rid = c.execute("INSERT INTO resgates(dia, endereco, ip_hash, sats, status, criado) "
-                                "VALUES (?, ?, ?, ?, 'pendente', ?)",
-                                (dia, endereco, ip_hash, sats, agora)).lastrowid
+                rid = c.execute("INSERT INTO resgates(dia, endereco, ip_hash, sats, status, criado, tipo) "
+                                "VALUES (?, ?, ?, ?, 'pendente', ?, ?)",
+                                (dia, endereco, ip_hash, sats, agora, tipo)).lastrowid
                 c.execute("COMMIT")
                 return rid, sats
             except BaseException:

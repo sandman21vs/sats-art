@@ -35,6 +35,13 @@ RECUSAS = {
     "pote": "O pote está quase vazio. Que tal doar uns sats para ele voltar a pagar?",
     "token": "Esta imagem já foi resgatada ou o tempo para resgatar acabou. Exporte outra imagem.",
 }
+# a urna troca só as mensagens que falam de imagem ou de "limite do dia"
+RECUSAS_URNA = {
+    **RECUSAS,
+    "limite_usuario": "Os sats do seu voto já foram resgatados. Obrigado por votar!",
+    "limite_global": "Os sats da urna de hoje acabaram. Volte amanhã!",
+    "token": "O tempo para resgatar os sats do seu voto acabou.",
+}
 
 
 class ResgateErro(Exception):
@@ -105,10 +112,10 @@ class Recompensas:
     def recompensas_pausadas(self):
         return self.db.ler_estado(f"pausa_recompensas:{hoje()}") is not None
 
-    def meu_dia(self, endereco, ip_hash):
-        seq, dia = self.cfg.recompensas_seq, hoje()
-        n = max(self.db.contar_dia(dia, "endereco", endereco) if endereco else 0,
-                self.db.contar_dia(dia, "ip_hash", ip_hash))
+    def meu_dia(self, endereco, ip_hash, tipo="arte", seq=None):
+        seq, dia = self.cfg.recompensas_seq if seq is None else seq, hoje()
+        n = max(self.db.contar_dia(dia, "endereco", endereco, tipo) if endereco else 0,
+                self.db.contar_dia(dia, "ip_hash", ip_hash, tipo))
         return {"feitos": n, "ganho_hoje": sum(seq[:n]), "restante_hoje": sum(seq[n:]),
                 "proxima": seq[n] if n < len(seq) else 0}
 
@@ -116,11 +123,19 @@ class Recompensas:
         return self.meu_dia(endereco, ip_hash)["restante_hoje"]
 
     # ---------- tokens ----------
-    def emitir_token(self, dono=None):
-        """`dono` = hash da cota (antiabuso.hash_cota) de quem exportou: só ele pode resgatar."""
+    def emitir_token(self, dono=None, tipo="arte", sats=None):
+        """`dono` = hash da cota (antiabuso.hash_cota) de quem exportou: só ele pode resgatar.
+        Tokens da urna levam o valor fixo do voto em `sats`."""
         token = secrets.token_urlsafe(18)
-        self.db.criar_token(token, dono)
+        self.db.criar_token(token, dono, tipo, sats)
         return token
+
+    def _regras(self, tipo, token):
+        """(sats de cada resgate do dia, limite global do dia, mensagens de recusa) do tipo."""
+        if tipo == "urna":
+            sats = self.db.sats_do_token(token)
+            return [sats] if sats else [], self.cfg.urna_limite_dia_global, RECUSAS_URNA
+        return self.cfg.recompensas_seq, self.cfg.limite_dia_global, RECUSAS
 
     # ---------- resgate ----------
     async def _confirmar_coinos(self, endereco):
@@ -139,12 +154,12 @@ class Recompensas:
         while len(self._enderecos_ok) > 5000:
             self._enderecos_ok.popitem(last=False)
 
-    async def resgatar(self, token, endereco, ip_hash, prova, antes_da_rede=None):
+    async def resgatar(self, token, endereco, ip_hash, prova, antes_da_rede=None, tipo="arte"):
         """`ip_hash` = hash da cota (antiabuso.hash_cota). `antes_da_rede()` é chamado depois das
         conferências baratas (token, prova de trabalho, cota) e antes de qualquer acesso à rede:
         é onde entram limites globais, que assim só contam pedidos com token e prova válidos."""
         try:
-            res = await self._resgatar(token, endereco, ip_hash, prova, antes_da_rede)
+            res = await self._resgatar(token, endereco, ip_hash, prova, antes_da_rede, tipo)
         except (ResgateErro, lnurl.LnurlErro) as e:
             evento("resgate_recusado", endereco=mascarar_endereco(endereco if isinstance(endereco, str) else None),
                    ip=str(ip_hash)[:12], motivo=str(e))
@@ -153,7 +168,7 @@ class Recompensas:
             evento("resgate_cancelado", "warning", endereco=mascarar_endereco(endereco), ip=str(ip_hash)[:12])
             raise
         evento("resgate_pago", endereco=mascarar_endereco(endereco), ip=str(ip_hash)[:12],
-               sats=res["sats"], taxa=res["taxa"], ganho_hoje=res["ganho_hoje"])
+               sats=res["sats"], taxa=res["taxa"], ganho_hoje=res["ganho_hoje"], tipo=tipo)
         return res
 
     def endereco_do_pote(self, endereco):
@@ -165,7 +180,7 @@ class Recompensas:
     def endereco_bloqueado(self, endereco):
         return self.db.ler_estado(f"bloqueio:{hoje()}:{endereco}") is not None
 
-    async def _resgatar(self, token, endereco, ip_hash, prova, antes_da_rede=None):
+    async def _resgatar(self, token, endereco, ip_hash, prova, antes_da_rede=None, tipo="arte"):
         cfg = self.cfg
         endereco = lnurl.normalizar(endereco)  # LnurlErro se inválido
         usuario, dominio = endereco.split("@")
@@ -182,14 +197,15 @@ class Recompensas:
             raise ResgateErro("A Coinos recusou pagamentos para esse endereço hoje. Confira o endereço "
                               "ou tente amanhã.")
         if not isinstance(token, str) or len(token) > 64 or \
-                not self.db.token_valido(token, cfg.token_validade_s, ip_hash):
-            raise ResgateErro(RECUSAS["token"])
+                not self.db.token_valido(token, cfg.token_validade_s, ip_hash, tipo):
+            raise ResgateErro((RECUSAS_URNA if tipo == "urna" else RECUSAS)["token"])
         if not antiabuso.verificar(cfg.hmac_key, cfg.pow_bits, prova, self.db.queimar_salt):
             raise ResgateErro("A verificação anti-robô falhou. Tente de novo.")
 
-        previa = self.meu_dia(endereco, ip_hash)  # só para não ir à rede à toa
+        regras = self._regras(tipo, token)
+        previa = self.meu_dia(endereco, ip_hash, tipo, regras[0])  # só para não ir à rede à toa
         if not previa["proxima"]:
-            raise ResgateErro(RECUSAS["limite_usuario"])
+            raise ResgateErro(regras[2]["limite_usuario"])
         if antes_da_rede:
             antes_da_rede()
 
@@ -208,14 +224,16 @@ class Recompensas:
 
         # Daqui em diante roda numa tarefa própria: se o pedido HTTP for cancelado (cliente
         # fechou a aba, timeout), a reserva, o pagamento e o fechamento terminam mesmo assim.
-        trabalho = asyncio.create_task(self._concluir(token, endereco, usuario, ip_hash, bolt11, previa))
+        trabalho = asyncio.create_task(self._concluir(token, endereco, usuario, ip_hash, bolt11, previa,
+                                                      tipo, regras))
         self._tarefas.add(trabalho)
         trabalho.add_done_callback(self._tarefas.discard)
         return await asyncio.shield(trabalho)
 
-    async def _concluir(self, token, endereco, usuario, ip_hash, bolt11, previa):
+    async def _concluir(self, token, endereco, usuario, ip_hash, bolt11, previa, tipo="arte", regras=None):
+        regras = regras or self._regras(tipo, token)
         if bolt11 is None:
-            return await self._reservar_e_pagar(token, endereco, usuario, ip_hash, None, previa)
+            return await self._reservar_e_pagar(token, endereco, usuario, ip_hash, None, previa, tipo, regras)
         async with self._trava_externos:  # um por vez: a pausa por taxa vale já para o próximo
             dono = f"{id(self)}:{token}"
             # a vez também é disputada no banco, para valer entre processos/containers
@@ -223,12 +241,15 @@ class Recompensas:
                 raise ResgateErro("Pagamentos para carteiras de fora estão indisponíveis agora. "
                                   "Use um endereço @coinos.io.")
             try:
-                return await self._reservar_e_pagar(token, endereco, usuario, ip_hash, bolt11, previa)
+                return await self._reservar_e_pagar(token, endereco, usuario, ip_hash, bolt11, previa,
+                                                    tipo, regras)
             finally:
                 self.db.liberar_vez_externo(dono)
 
-    async def _reservar_e_pagar(self, token, endereco, usuario, ip_hash, bolt11, previa):
+    async def _reservar_e_pagar(self, token, endereco, usuario, ip_hash, bolt11, previa, tipo="arte",
+                                regras=None):
         cfg, externo = self.cfg, bolt11 is not None
+        seq, limite_global, recusas = regras or self._regras(tipo, token)
         try:
             saldo, saldo_em = await self.saldo_agora()  # lido logo antes de reservar
         except CoinosErro as e:
@@ -236,13 +257,13 @@ class Recompensas:
         try:
             rid, sats = self.db.reservar_resgate(
                 token=token, validade_s=cfg.token_validade_s, dia=hoje(), endereco=endereco,
-                ip_hash=ip_hash, seq=cfg.recompensas_seq, limite_global=cfg.limite_dia_global,
+                ip_hash=ip_hash, seq=seq, limite_global=limite_global,
                 taxa_max=cfg.taxa_max, intervalo_min_s=cfg.intervalo_min_s, saldo=saldo,
-                saldo_em=saldo_em, reserva_pote=cfg.reserva_pote)
+                saldo_em=saldo_em, reserva_pote=cfg.reserva_pote, tipo=tipo)
         except Recusa as e:
-            evento("reserva_recusada", motivo=e.codigo, ip=str(ip_hash)[:12])
-            raise ResgateErro(RECUSAS[e.codigo]) from e
-        evento("reserva_feita", resgate=rid, sats=sats, externo=externo, saldo_lido=saldo)
+            evento("reserva_recusada", motivo=e.codigo, ip=str(ip_hash)[:12], tipo=tipo)
+            raise ResgateErro(recusas[e.codigo]) from e
+        evento("reserva_feita", resgate=rid, sats=sats, externo=externo, saldo_lido=saldo, tipo=tipo)
         if externo and sats != previa["proxima"]:  # outro resgate entrou no meio
             self.db.liberar_resgate(rid, token, "valor mudou durante o resgate")
             raise ResgateErro("Tente de novo, por favor.")
@@ -280,7 +301,7 @@ class Recompensas:
             self.db.gravar_estado("pausa_externos", f"taxa {taxa!r} no resgate {rid}")
             evento("pausa_externos", "error", resgate=rid, taxa=taxa, taxa_max=cfg.taxa_max,
                    motivo="taxa acima do máximo ou não informada")
-        return {"sats": sats, "taxa": taxa or 0, **self.meu_dia(endereco, ip_hash)}
+        return {"sats": sats, "taxa": taxa or 0, **self.meu_dia(endereco, ip_hash, tipo, seq)}
 
     def _registrar_erro(self, rid, motivo, externo=False, destino=None):
         """O resgate fica 'erro' (token gasto, conta nos limites, conferir na Coinos).

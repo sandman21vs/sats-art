@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Urna dos Sats</title>
+<meta name="description" content="Vote '13 ou '22 e receba esse tanto de sats. Brincadeira de segundo turno.">
+<style>
+  :root {
+    --bg: #0e0d0d; --panel: #171515; --line: #2a2625; --text: #ece6e2; --muted: #9a8f88;
+    --accent: #ff6600; --accent-2: #ffb27f; --accent-soft: #ff66001f; --ok: #7fd18b; --erro: #ff8a7a;
+    --urna: #d9d3c4; --urna-borda: #b9b2a2; --tela: #f4f1e8; --tela-texto: #1c1b19;
+    --tecla: #1d1c1b; --tecla-texto: #f2f2f2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  [hidden] { display: none !important; }
+  a { color: var(--accent-2); }
+  button { font: inherit; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  input:focus, button:focus-visible { outline: 2px solid #ff660080; outline-offset: 2px; }
+
+  header { max-width: 1100px; margin: 0 auto; padding: 18px 16px 6px; display: flex; justify-content: space-between;
+    align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  h1 span { color: var(--accent); }
+  header p { margin: 2px 0 0; color: var(--muted); }
+  header a { font-size: 13px; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 32px; display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  /* ----- urna ----- */
+  .urna { background: var(--urna); border: 1px solid var(--urna-borda); border-radius: 14px; padding: 18px;
+    display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 18px;
+    box-shadow: 0 10px 40px #0008; }
+  @media (max-width: 620px) { .urna { grid-template-columns: 1fr; padding: 12px; } }
+  .tela { background: var(--tela); color: var(--tela-texto); border: 6px solid #8f897c; border-radius: 6px;
+    min-height: 300px; padding: 14px 16px; display: flex; flex-direction: column;
+    font-family: Arial, Helvetica, sans-serif; }
+  .tela .cargo-topo { font-size: 13px; }
+  .tela .cargo { font-size: 24px; font-weight: 700; text-align: center; margin: 10px 0 18px; letter-spacing: .02em; }
+  .tela .linha { display: flex; align-items: center; gap: 10px; font-size: 15px; margin: 6px 0; }
+  .digitos { display: flex; gap: 6px; }
+  .digito { width: 36px; height: 44px; border: 1px solid #333; display: grid; place-items: center;
+    font-size: 30px; font-weight: 700; background: #fff; }
+  .digito.atual { animation: pisca 1s steps(2) infinite; }
+  @keyframes pisca { 50% { background: #c9c4b6; } }
+  .tela .aviso { font-size: 26px; font-weight: 700; text-align: center; margin: 14px 0 4px; }
+  .tela .sub { text-align: center; font-size: 14px; }
+  .tela .rodape { margin-top: auto; border-top: 1px solid #999; padding-top: 8px; font-size: 12.5px; }
+  .tela .fim { flex: 1; display: grid; place-items: center; font-size: 72px; font-weight: 700; letter-spacing: .08em; }
+
+  .teclado { background: #2b2a28; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .numeros button { background: var(--tecla); color: var(--tecla-texto); border: 0; border-radius: 6px; height: 46px;
+    font-size: 20px; font-weight: 700; box-shadow: inset 0 -3px 0 #000; }
+  .numeros button:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 #000; }
+  .numeros .zero { grid-column: 2; }
+  .acoes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .acoes button { border: 0; border-radius: 6px; height: 44px; font-size: 11.5px; font-weight: 800; color: #111;
+    box-shadow: inset 0 -3px 0 #0005; }
+  .acoes .branco { background: #f4f4f4; }
+  .acoes .corrige { background: #f28b30; }
+  .acoes .confirma { background: #2eaa4a; height: 52px; align-self: end; }
+  .marca { color: #bdb6a6; font-size: 11px; text-align: center; letter-spacing: .1em; text-transform: uppercase; }
+
+  /* ----- resgate ----- */
+  .card { margin-top: 16px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
+  .card h2 { font-size: 16px; margin: 0 0 4px; }
+  .card h2 b { color: var(--accent); }
+  .card p { margin: 0 0 10px; color: var(--muted); }
+  .resgate { display: flex; gap: 8px; flex-wrap: wrap; }
+  .resgate input { flex: 1 1 220px; min-width: 0; font: inherit; color: var(--text); background: #1f1c1b;
+    border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; }
+  .primario { background: var(--accent); border: 1px solid var(--accent); color: #1a0d04; font-weight: 700;
+    border-radius: 9px; padding: 10px 16px; }
+  .msg { font-size: 13px; color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
+  .msg.erro { color: var(--erro); }
+  .msg.sucesso { color: var(--ok); }
+
+  /* ----- apuração ----- */
+  .apuracao { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px; position: relative; }
+  .apuracao h2 { font-size: 15px; margin: 0 0 2px; }
+  .apuracao .total { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
+  .cand { margin-bottom: 14px; }
+  .cand .topo { display: flex; justify-content: space-between; align-items: baseline; }
+  .cand .num { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .cand .pct { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cand .votos { color: var(--muted); font-size: 12px; }
+  .barra { height: 12px; border-radius: 6px; background: #262221; overflow: hidden; margin-top: 4px; }
+  .barra i { display: block; height: 100%; width: 0; border-radius: 6px; transition: width .8s ease; }
+  .cand.c13 .barra i { background: var(--accent); }
+  .cand.c22 .barra i { background: #c9c1b8; }
+  .cand.lider .num::after { content: " ●"; font-size: 12px; color: var(--accent-2); vertical-align: middle; }
+  .travada .dados { filter: blur(7px); opacity: .5; pointer-events: none; user-select: none; }
+  .cadeado { position: absolute; inset: 52px 16px 16px; display: grid; place-items: center; text-align: center;
+    color: var(--text); font-weight: 600; }
+  .cadeado span { display: block; font-size: 28px; margin-bottom: 6px; }
+  .meu-voto { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+
+  .aviso-legal { max-width: 1100px; margin: 0 auto; padding: 0 16px 28px; color: var(--muted); font-size: 12px; }
+
+  .cai { position: fixed; top: -30px; pointer-events: none; animation: cair 2.6s linear forwards; z-index: 9; }
+  @keyframes cair { to { transform: translateY(110vh) rotate(260deg); opacity: .2; } }
+  @media (prefers-reduced-motion: reduce) { .digito.atual { animation: none; } .barra i { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Urna dos <span>Sats</span></h1>
+    <p>Vote <b>'13</b> ou <b>'22</b> e receba esse tanto de sats.</p>
+  </div>
+  <a href="/">← voltar para a Rede de Nós</a>
+</header>
+
+<main>
+  <section>
+    <div class="urna">
+      <div class="tela" id="tela" aria-live="polite"></div>
+      <div class="teclado">
+        <div class="numeros" id="numeros">
+          <button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
+          <button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+          <button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button>
+          <button data-n="0" class="zero">0</button>
+        </div>
+        <div class="acoes">
+          <button class="branco" id="branco">BRANCO</button>
+          <button class="corrige" id="corrige">CORRIGE</button>
+          <button class="confirma" id="confirma">CONFIRMA</button>
+        </div>
+        <div class="marca">Justiça dos Sats</div>
+      </div>
+    </div>
+
+    <div class="card" id="cardResgate" hidden>
+      <h2>Seu voto vale <b id="valorVoto">0</b> sats</h2>
+      <p>Coloque seu endereço Lightning da Coinos para receber.</p>
+      <div class="resgate" id="formResgate">
+        <input type="text" id="ln" placeholder="voce@coinos.io" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="primario" id="receber">Receber</button>
+      </div>
+      <div class="msg" id="msgResgate"></div>
+    </div>
+    <div class="card" id="cardSemSats" hidden>
+      <h2>Voto registrado</h2>
+      <p id="textoSemSats"></p>
+    </div>
+  </section>
+
+  <aside class="apuracao travada" id="apuracao">
+    <h2>Apuração</h2>
+    <p class="total" id="total">—</p>
+    <div class="dados">
+      <div class="cand c13" id="c13">
+        <div class="topo"><span class="num">'13</span><span class="pct" id="pct13">50%</span></div>
+        <div class="barra"><i id="barra13"></i></div>
+        <div class="votos" id="votos13">— votos</div>
+      </div>
+      <div class="cand c22" id="c22">
+        <div class="topo"><span class="num">'22</span><span class="pct" id="pct22">50%</span></div>
+        <div class="barra"><i id="barra22"></i></div>
+        <div class="votos" id="votos22">— votos</div>
+      </div>
+      <div class="meu-voto" id="meuVoto"></div>
+    </div>
+    <div class="cadeado" id="cadeado"><div><span>🔒</span>Vote para ver a apuração</div></div>
+  </aside>
+</main>
+
+<p class="aviso-legal">
+  Isto é uma brincadeira, não é pesquisa eleitoral: qualquer pessoa vota, um voto por conexão, e o
+  resultado não representa ninguém. Os sats saem do pote da Rede de Nós enquanto houver saldo. No dia
+  da eleição, vote de verdade na sua seção.
+</p>
+
+<script src="/urna.js"></script>
+</body>
+</html>

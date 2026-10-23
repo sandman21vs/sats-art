@@ -117,6 +117,19 @@ MENSAGENS = {
     "Esta imagem já foi resgatada ou o tempo para resgatar acabou. Exporte outra imagem.": (
         "This image was already claimed or the time to claim it ran out. Export another image.",
         "Dieses Bild wurde schon eingelöst oder die Zeit dafür ist abgelaufen. Exportiere ein neues Bild."),
+    # urna (servidor/urna.py e as recusas da urna em recompensas.py)
+    "Os sats do seu voto já foram resgatados. Obrigado por votar!": (
+        "The sats for your vote were already claimed. Thanks for voting!",
+        "Die Sats für deine Stimme wurden schon eingelöst. Danke fürs Abstimmen!"),
+    "Os sats da urna de hoje acabaram. Volte amanhã!": (
+        "Today's ballot box sats ran out. Come back tomorrow!",
+        "Die Sats der Wahlurne für heute sind aufgebraucht. Komm morgen wieder!"),
+    "O tempo para resgatar os sats do seu voto acabou.": (
+        "The time to claim the sats for your vote ran out.",
+        "Die Zeit zum Einlösen der Sats für deine Stimme ist abgelaufen."),
+    "Vote em 13 ou 22.": ("Vote for 13 or 22.", "Stimme für 13 oder 22."),
+    "Muitos votos seguidos. Espere um pouquinho.": (
+        "Too many votes in a row. Wait a moment.", "Zu viele Stimmen hintereinander. Warte einen Moment."),
     "Esse é o endereço do próprio pote. Use o seu endereço Lightning.": (
         "That's the pot's own address. Use your own Lightning address.", "Das ist die Adresse des Topfs selbst. Nimm deine eigene Lightning-Adresse."),
     "As recompensas estão pausadas hoje para conferência. Volte amanhã!": (
