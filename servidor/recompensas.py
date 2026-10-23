@@ -131,11 +131,14 @@ class Recompensas:
         return token
 
     def _regras(self, tipo, token):
-        """(sats de cada resgate do dia, limite global do dia, mensagens de recusa) do tipo."""
+        """(sats de cada resgate do dia, limite global do dia, mensagens de recusa, reserva do pote)
+        do tipo. A urna com URNA_DAILY_GLOBAL_SATS=0 não tem limite por dia: só a reserva segura."""
+        cfg = self.cfg
         if tipo == "urna":
             sats = self.db.sats_do_token(token)
-            return [sats] if sats else [], self.cfg.urna_limite_dia_global, RECUSAS_URNA
-        return self.cfg.recompensas_seq, self.cfg.limite_dia_global, RECUSAS
+            return ([sats] if sats else [], cfg.urna_limite_dia_global or float("inf"), RECUSAS_URNA,
+                    cfg.urna_reserva_pote)
+        return cfg.recompensas_seq, cfg.limite_dia_global, RECUSAS, cfg.reserva_pote
 
     # ---------- resgate ----------
     async def _confirmar_coinos(self, endereco):
@@ -249,7 +252,7 @@ class Recompensas:
     async def _reservar_e_pagar(self, token, endereco, usuario, ip_hash, bolt11, previa, tipo="arte",
                                 regras=None):
         cfg, externo = self.cfg, bolt11 is not None
-        seq, limite_global, recusas = regras or self._regras(tipo, token)
+        seq, limite_global, recusas, reserva = regras or self._regras(tipo, token)
         try:
             saldo, saldo_em = await self.saldo_agora()  # lido logo antes de reservar
         except CoinosErro as e:
@@ -259,7 +262,7 @@ class Recompensas:
                 token=token, validade_s=cfg.token_validade_s, dia=hoje(), endereco=endereco,
                 ip_hash=ip_hash, seq=seq, limite_global=limite_global,
                 taxa_max=cfg.taxa_max, intervalo_min_s=cfg.intervalo_min_s, saldo=saldo,
-                saldo_em=saldo_em, reserva_pote=cfg.reserva_pote, tipo=tipo)
+                saldo_em=saldo_em, reserva_pote=reserva, tipo=tipo)
         except Recusa as e:
             evento("reserva_recusada", motivo=e.codigo, ip=str(ip_hash)[:12], tipo=tipo)
             raise ResgateErro(recusas[e.codigo]) from e

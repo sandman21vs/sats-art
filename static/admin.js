@@ -99,9 +99,15 @@ function urna(u) {
     $("uPct" + n).append(s);
   }
   $("uVotos").textContent = fmt.format(total);
-  $("uHoje").textContent = `${fmt.format(u.gasto_hoje)} / ${fmt.format(u.limite_dia)}`;
-  $("uMedidor").style.width = Math.min(100, (100 * u.gasto_hoje) / (u.limite_dia || 1)) + "%";
-  $("uHojeNota").textContent = u.gasto_hoje >= u.limite_dia ? "limite do dia atingido" : "gasto do limite diário (URNA_DAILY_GLOBAL_SATS)";
+  if (u.limite_dia) {
+    $("uHoje").textContent = `${fmt.format(u.gasto_hoje)} / ${fmt.format(u.limite_dia)}`;
+    $("uMedidor").style.width = Math.min(100, (100 * u.gasto_hoje) / u.limite_dia) + "%";
+    $("uHojeNota").textContent = u.gasto_hoje >= u.limite_dia ? "limite do dia atingido" : "gasto do limite diário (URNA_DAILY_GLOBAL_SATS)";
+  } else {
+    $("uHoje").textContent = fmt.format(u.gasto_hoje);
+    $("uMedidor").parentElement.hidden = true;
+    $("uHojeNota").textContent = `sem limite por dia · a urna para quando o pote chega em ${fmt.format(u.reserva)} sats`;
+  }
   $("uSats").textContent = fmt.format(u.total_sats);
   $("uResgates").textContent = `${fmt.format(u.total_resgates)} resgate(s)`;
   barras($("gVotos"), u.dias, "votos", "votos");

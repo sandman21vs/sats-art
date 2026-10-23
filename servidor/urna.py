@@ -90,6 +90,7 @@ def resumo_admin(db, cfg, dias):
         "ativa": cfg.urna_ativa,
         "placar": votos.placar(),
         "limite_dia": cfg.urna_limite_dia_global,
+        "reserva": cfg.urna_reserva_pote,
         "gasto_hoje": gasto_hoje,
         "total_sats": sum(v[0] for v in pagos.values()),
         "total_resgates": sum(v[1] for v in pagos.values()),
@@ -144,7 +145,8 @@ def criar_router(*, cfg, db, recompensas_de, ip_de, limitar, ler_json, Recusado,
                       f"AND status IN {CONTA}", hoje())[0]
         return {"recompensas": bool(recompensas_de()), "numeros": list(NUMEROS),
                 "total_votos": votos.placar()["total"],
-                "urna_hoje": {"limite": cfg.urna_limite_dia_global, "gasto": gasto}}
+                "urna_hoje": {"limite": cfg.urna_limite_dia_global, "gasto": gasto,
+                              "reserva": cfg.urna_reserva_pote}}
 
     def resposta(cota, numero, token):
         r = {"votou": True, "numero": numero, "placar": votos.placar(), "token": token_vivo(token, cota)}

@@ -62,6 +62,17 @@ def test_limite_global_da_urna_e_separado():
     assert r.db.um("SELECT COUNT(*) FROM resgates WHERE dia = ? AND tipo = 'urna'", hoje())[0] == 1
 
 
+def test_sem_limite_diario_a_urna_para_na_reserva_dela():
+    # URNA_DAILY_GLOBAL_SATS=0: sem teto por dia; a urna paga enquanto o pote ficar acima da reserva dela
+    r, c = montar(urna_limite_dia_global=0, urna_reserva_pote=9_940, reserva_pote=500)
+    assert resgatar(r, r.emitir_token("c1", tipo="urna", sats=22))["sats"] == 22   # 10.000 -> 9.978
+    assert resgatar(r, r.emitir_token("c2", tipo="urna", sats=13), endereco="bob@coinos.io", cota="c2")["sats"] == 13
+    with pytest.raises(ResgateErro, match="pote está quase vazio"):  # 9.965 - pagos recentes - 22 - taxa < 9.940
+        resgatar(r, r.emitir_token("c3", tipo="urna", sats=22), endereco="eva@coinos.io", cota="c3")
+    # a arte segue com a reserva dela (500)
+    assert resgatar(r, r.emitir_token("c3"), endereco="eva@coinos.io", cota="c3", tipo="arte")["sats"] == 10
+
+
 def test_banco_antigo_ganha_as_colunas_de_tipo(tmp_path):
     import sqlite3
     from servidor.db import DB
@@ -133,7 +144,8 @@ def test_placar_so_depois_de_votar_e_um_voto_por_pessoa():
         async with _cliente(app) as c:
             antes = (await c.get("/api/urna")).json()
             assert antes["votou"] is False and "placar" not in antes
-            assert antes["total_votos"] == 0 and antes["urna_hoje"] == {"limite": 500, "gasto": 0}
+            assert antes["total_votos"] == 0
+            assert antes["urna_hoje"] == {"limite": 500, "gasto": 0, "reserva": r.cfg.urna_reserva_pote}
             v = (await c.post("/api/urna/votar", json={"numero": "22"})).json()
             assert v["numero"] == "22" and v["sats"] == 22 and v["token"]
             assert v["placar"] == {"13": 0, "22": 1, "total": 1}

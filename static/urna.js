@@ -14,7 +14,7 @@ const mensagem = (el, texto, tipo = "") => {
 const NUMEROS = ["13", "22"];
 
 let digitado = "", branco = false, votou = false, enviando = false, novo = -1, meuNumero = "";
-let ESTADO = null, token = null;
+let ESTADO = null, token = null, POTE = null;
 
 // ---------- som (bipe das teclas e o "pi-pi-pi-piii" do fim) ----------
 let audio = null;
@@ -200,6 +200,14 @@ function gerais(j) {
   const h = j.urna_hoje;
   if (!j.recompensas) {
     $("statHoje").textContent = "desligado";
+  } else if (h && !h.limite) {
+    // sem limite por dia: a urna paga até o pote chegar na reserva dela
+    $("statHojeRot").textContent = "Disponível para votos";
+    $("barraHoje").parentElement.hidden = true;
+    $("statHojeDet").textContent = `o pote sempre guarda ${num(h.reserva)} sats`;
+    if (POTE != null) {
+      $("statHoje").replaceChildren(num(Math.max(0, POTE - h.reserva)), el("small", "", " sats"));
+    }
   } else if (h) {
     const resta = Math.max(0, h.limite - h.gasto);
     $("statHoje").innerHTML = "";
@@ -215,6 +223,8 @@ async function infos() {
     if (!r.ok) return;
     const i = await r.json();
     $("statPote").textContent = i.pote == null ? (i.recompensas ? "…" : "—") : `${num(i.pote)} sats`;
+    POTE = i.pote;
+    if (ESTADO) gerais(ESTADO);
     $("bountyPct").textContent = (i.bounty_percentual || 70) + "%";
     const email = i.bounty_email || "";
     $("bountyEmail").textContent = email;
